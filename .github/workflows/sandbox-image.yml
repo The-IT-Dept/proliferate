@@ -1,0 +1,93 @@
+name: Sandbox Image
+
+# Builds and publishes the Kubernetes sandbox image (sandbox/Dockerfile): the
+# in-cluster analog of the E2B template baked by scripts/build-template.mjs.
+# See sandbox/README.md.
+
+on:
+  push:
+    tags: ["sandbox-v*"]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # Same toolchain setup as server-ci.yml's self-hosted-release-assets job
+      # (x86_64 leg only — the sandbox image only needs the x86_64 binaries).
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install musl-tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      # The canonical runtime version, stamped into all three binaries. This is
+      # always anyharness/sdk/package.json's version, independent of the image
+      # tag computed below (see "Compute image version").
+      - name: Resolve runtime version
+        id: runtime_version
+        run: |
+          set -euo pipefail
+          RUNTIME_VERSION="$(jq -r .version anyharness/sdk/package.json)"
+          echo "value=${RUNTIME_VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Reuses server-ci.yml's self-hosted-release-assets build invocation
+      # verbatim, stamping PROLIFERATE_BUILD_VERSION/PROLIFERATE_BUILD_SHA so
+      # the runtime never reports a placeholder version (0.0.0/0.1.0 are
+      # rejected at startup).
+      - name: Build sandbox runtime binaries (x86_64 musl)
+        env:
+          PROLIFERATE_BUILD_VERSION: ${{ steps.runtime_version.outputs.value }}
+          PROLIFERATE_BUILD_SHA: ${{ github.sha }}
+        run: cargo build --release --target x86_64-unknown-linux-musl -p anyharness -p proliferate-worker -p proliferate-supervisor
+
+      - name: Assemble build context
+        run: |
+          set -euo pipefail
+          mkdir -p sandbox/context
+          cp target/x86_64-unknown-linux-musl/release/anyharness sandbox/context/anyharness
+          cp target/x86_64-unknown-linux-musl/release/proliferate-worker sandbox/context/proliferate-worker
+          cp target/x86_64-unknown-linux-musl/release/proliferate-supervisor sandbox/context/proliferate-supervisor
+          cp install/proliferate-git-credential-helper sandbox/context/proliferate-git-credential-helper
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # On a sandbox-v* tag push the tag drives the image version; on a manual
+      # dispatch there is no tag, so derive a version from the package.json
+      # runtime version plus the run number.
+      - name: Compute image version + tags
+        id: tags
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF:-}" == refs/tags/sandbox-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/sandbox-v}"
+          else
+            VERSION="${{ steps.runtime_version.outputs.value }}-dispatch.${{ github.run_number }}"
+          fi
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/proliferate-sandbox"
+          {
+            echo "version=${VERSION}"
+            echo "tags<<EOF"
+            printf '%s\n' "${IMAGE}:${VERSION}" "${IMAGE}:stable"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: sandbox/context
+          file: sandbox/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
