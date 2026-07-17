@@ -109,6 +109,7 @@ class CloudMaterializationStatus(StrEnum):
 
 class CloudSandboxType(StrEnum):
     e2b = "e2b"
+    kubernetes = "kubernetes"
 
 
 class CloudSandboxStatus(StrEnum):
