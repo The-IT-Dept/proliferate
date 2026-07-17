@@ -28,7 +28,12 @@ FROM ubuntu:24.04
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # --- sandbox user: uid/gid 1000, home /home/user, login shell ---------------
-RUN groupadd --gid 1000 user \
+# ubuntu:24.04 ships a default `ubuntu` user+group at uid/gid 1000; drop it
+# first so groupadd/useradd below don't fail with "GID/UID 1000 already in
+# use" (which, under the pipefail SHELL, would kill the build on the very
+# first RUN after FROM).
+RUN userdel -r ubuntu 2>/dev/null || true; groupdel ubuntu 2>/dev/null || true; \
+    groupadd --gid 1000 user \
     && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash user
 
 # --- base OS packages (matches buildTemplateDefinition() aptInstall) --------
@@ -55,7 +60,7 @@ RUN rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx \
 
 # --- Rust (minimal rustup, installed as `user`) ------------------------------
 USER user
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+RUN export HOME=/home/user && curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
 USER root
 RUN ln -sf /home/user/.cargo/bin/cargo /usr/local/bin/cargo \
     && ln -sf /home/user/.cargo/bin/rustc /usr/local/bin/rustc \

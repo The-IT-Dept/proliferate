@@ -9,6 +9,10 @@ on:
     tags: ["sandbox-v*"]
   workflow_dispatch:
 
+concurrency:
+  group: sandbox-image-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -77,10 +81,17 @@ jobs:
             VERSION="${{ steps.runtime_version.outputs.value }}-dispatch.${{ github.run_number }}"
           fi
           IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/proliferate-sandbox"
+          TAGS=("${IMAGE}:${VERSION}")
+          # Only repoint the rolling :stable tag on a real sandbox-v* tag
+          # push; a workflow_dispatch build is a throwaway VERSION and must
+          # never become :stable.
+          if [[ "${GITHUB_REF:-}" == refs/tags/sandbox-v* ]]; then
+            TAGS+=("${IMAGE}:stable")
+          fi
           {
             echo "version=${VERSION}"
             echo "tags<<EOF"
-            printf '%s\n' "${IMAGE}:${VERSION}" "${IMAGE}:stable"
+            printf '%s\n' "${TAGS[@]}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
