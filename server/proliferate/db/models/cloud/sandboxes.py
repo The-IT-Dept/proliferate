@@ -33,7 +33,7 @@ class CloudSandbox(Base):
             name="ck_cloud_sandbox_status",
         ),
         CheckConstraint(
-            "sandbox_type IN ('e2b')",
+            "sandbox_type IN ('e2b', 'kubernetes')",
             name="ck_cloud_sandbox_type",
         ),
         Index(
