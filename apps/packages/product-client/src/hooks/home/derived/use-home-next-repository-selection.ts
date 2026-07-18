@@ -3,6 +3,7 @@ import type { GitBranchRef, RepoRoot, Workspace } from "@anyharness/sdk";
 import { useRepoRootGitBranchesQuery } from "@anyharness/sdk-react";
 import { useRepositories } from "@proliferate/cloud-sdk-react";
 import { useCloudAvailabilityState } from "#product/hooks/cloud/derived/use-cloud-availability-state";
+import { useCloudRepoBranches } from "#product/hooks/access/cloud/use-cloud-repo-branches";
 import { useLogicalWorkspaces } from "#product/hooks/workspaces/derived/use-logical-workspaces";
 import { useStandardRepoProjection } from "#product/hooks/workspaces/derived/use-standard-repo-projection";
 import {
@@ -31,6 +32,7 @@ import { useCloudRepoActionState } from "#product/hooks/cloud/derived/use-cloud-
 const EMPTY_WORKSPACES: Workspace[] = [];
 const EMPTY_REPO_ROOTS: RepoRoot[] = [];
 const EMPTY_BRANCH_REFS: GitBranchRef[] = [];
+const EMPTY_BRANCH_NAMES: string[] = [];
 
 interface UseHomeNextRepositorySelectionArgs {
   destination: HomeNextDestination;
@@ -86,8 +88,29 @@ export function useHomeNextRepositorySelection({
       && repoLaunchKind !== "local",
   });
   const branchRefs = branchQuery.data ?? EMPTY_BRANCH_REFS;
-  const defaultBranchName = useMemo(() => (
-    resolveHomeNextDefaultBranchName({
+
+  // Cloud-only repos have no local git checkout, so the local branch query above
+  // is disabled for them and would leave the picker permanently empty. Their
+  // branches come from the control plane's GitHub listing instead.
+  const cloudBranchesQuery = useCloudRepoBranches(
+    selectedRepository?.gitOwner?.trim() ?? "",
+    selectedRepository?.gitRepoName?.trim() ?? "",
+    selectedRepositoryIsCloudOnly && cloudActive,
+  );
+  const cloudBranchNames = cloudBranchesQuery.data?.branches ?? EMPTY_BRANCH_NAMES;
+  const cloudDefaultBranch = cloudBranchesQuery.data?.defaultBranch?.trim() || null;
+
+  const defaultBranchName = useMemo(() => {
+    if (selectedRepositoryIsCloudOnly) {
+      const savedDefaultBranch = selectedRepository
+        ? repoConfigs[selectedRepository.sourceRoot]?.defaultBranch?.trim() ?? null
+        : null;
+      if (savedDefaultBranch && cloudBranchNames.includes(savedDefaultBranch)) {
+        return savedDefaultBranch;
+      }
+      return cloudDefaultBranch ?? cloudBranchNames[0] ?? null;
+    }
+    return resolveHomeNextDefaultBranchName({
       branchRefs,
       savedDefaultBranch: selectedRepository
         ? repoConfigs[selectedRepository.sourceRoot]?.defaultBranch ?? null
@@ -95,15 +118,22 @@ export function useHomeNextRepositorySelection({
       repoRootDefaultBranch: selectedRepoRoot?.defaultBranch
         ?? selectedRepository?.defaultBranch
         ?? null,
-    })
-  ), [branchRefs, repoConfigs, selectedRepoRoot?.defaultBranch, selectedRepository]);
+    });
+  }, [
+    branchRefs,
+    cloudBranchNames,
+    cloudDefaultBranch,
+    repoConfigs,
+    selectedRepoRoot?.defaultBranch,
+    selectedRepository,
+    selectedRepositoryIsCloudOnly,
+  ]);
   const branchOptions = useMemo(() => {
-    const localBranches = localBranchNames(branchRefs);
-    if (localBranches.length > 0 || !selectedRepositoryIsCloudOnly || !defaultBranchName) {
-      return localBranches;
+    if (selectedRepositoryIsCloudOnly) {
+      return cloudBranchNames;
     }
-    return [defaultBranchName];
-  }, [branchRefs, defaultBranchName, selectedRepositoryIsCloudOnly]);
+    return localBranchNames(branchRefs);
+  }, [branchRefs, cloudBranchNames, selectedRepositoryIsCloudOnly]);
 
   const selectedBranchName =
     baseBranchOverride && (branchOptions.includes(baseBranchOverride) || selectedRepositoryIsCloudOnly)
@@ -189,6 +219,7 @@ export function useHomeNextRepositorySelection({
     defaultBranchName,
     selectedBranchName,
     branchQuery,
+    cloudBranchesQuery,
     cloudActive,
     cloudRepoAction,
     cloudRepoActionBySourceRoot,

@@ -75,14 +75,32 @@ export function useHomeNextState({
     }
 
     const selectedRepositoryIsCloudOnly = repository.selectedRepository.availability === "cloud";
-    if (!selectedRepositoryIsCloudOnly && repository.branchQuery.isLoading) {
-      return "Loading branches";
-    }
-    if (!selectedRepositoryIsCloudOnly && repository.branchQuery.isError) {
-      return "Couldn't load branches";
-    }
-    if (!selectedRepositoryIsCloudOnly && repository.branchOptions.length === 0) {
-      return "No local branches found";
+    if (selectedRepositoryIsCloudOnly) {
+      // Cloud-only repos have no local checkout; their branches come from the
+      // control plane's GitHub listing (cloudBranchesQuery), not the local git
+      // query. Sign-in is a prerequisite for that listing, so check it first.
+      if (!repository.cloudActive) {
+        return "Sign in to use cloud workspaces";
+      }
+      if (repository.cloudBranchesQuery.isLoading) {
+        return "Loading branches";
+      }
+      if (repository.cloudBranchesQuery.isError) {
+        return "Couldn't load branches";
+      }
+      if (repository.branchOptions.length === 0) {
+        return "No branches found";
+      }
+    } else {
+      if (repository.branchQuery.isLoading) {
+        return "Loading branches";
+      }
+      if (repository.branchQuery.isError) {
+        return "Couldn't load branches";
+      }
+      if (repository.branchOptions.length === 0) {
+        return "No local branches found";
+      }
     }
     if (!repository.selectedBranchName) {
       return "Choose a base branch";
@@ -132,6 +150,8 @@ export function useHomeNextState({
     repository.branchOptions.length,
     repository.branchQuery.isError,
     repository.branchQuery.isLoading,
+    repository.cloudBranchesQuery.isError,
+    repository.cloudBranchesQuery.isLoading,
     repository.cloudActive,
     repository.cloudRepoAction.kind,
     repository.cloudRepoTarget,

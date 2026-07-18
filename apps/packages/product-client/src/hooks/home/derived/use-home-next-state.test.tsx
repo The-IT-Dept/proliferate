@@ -39,6 +39,10 @@ const stateMocks = vi.hoisted(() => {
       isLoading: false,
       isError: false,
     },
+    cloudBranchesQuery: {
+      isLoading: false,
+      isError: false,
+    },
     cloudActive: true,
     cloudRepoTarget: {
       gitOwner: "owner",
@@ -115,6 +119,10 @@ function resetMocks() {
   stateMocks.repository.selectedBranchName = "main";
   stateMocks.repository.branchOptions = ["main"];
   stateMocks.repository.branchQuery = {
+    isLoading: false,
+    isError: false,
+  };
+  stateMocks.repository.cloudBranchesQuery = {
     isLoading: false,
     isError: false,
   };
@@ -202,6 +210,54 @@ describe("useHomeNextState", () => {
     const noBranch = renderHomeNextState({ destination: "repository", repoLaunchKind: "worktree" });
     expect(noBranch.result.current.targetDisabledReason).toBe("Choose a base branch");
     noBranch.unmount();
+  });
+
+  it("surfaces cloud branch loading/error/empty for cloud-only repos", () => {
+    // A cloud-only repo draws branches from cloudBranchesQuery, not the local
+    // git query, so its disabled copy must key off that query instead.
+    resetMocks();
+    stateMocks.repository.selectedRepository.availability = "cloud";
+    stateMocks.repository.cloudBranchesQuery = { isLoading: true, isError: false };
+    const loading = renderHomeNextState({ destination: "repository", repoLaunchKind: "cloud" });
+    expect(loading.result.current.targetDisabledReason).toBe("Loading branches");
+    loading.unmount();
+
+    resetMocks();
+    stateMocks.repository.selectedRepository.availability = "cloud";
+    stateMocks.repository.cloudBranchesQuery = { isLoading: false, isError: true };
+    const errored = renderHomeNextState({ destination: "repository", repoLaunchKind: "cloud" });
+    expect(errored.result.current.targetDisabledReason).toBe("Couldn't load branches");
+    errored.unmount();
+
+    resetMocks();
+    stateMocks.repository.selectedRepository.availability = "cloud";
+    stateMocks.repository.branchOptions = [];
+    stateMocks.repository.selectedBranchName = null;
+    const empty = renderHomeNextState({ destination: "repository", repoLaunchKind: "cloud" });
+    expect(empty.result.current.targetDisabledReason).toBe("No branches found");
+    empty.unmount();
+
+    resetMocks();
+    stateMocks.repository.selectedRepository.availability = "cloud";
+    stateMocks.repository.cloudActive = false;
+    const signedOut = renderHomeNextState({ destination: "repository", repoLaunchKind: "cloud" });
+    expect(signedOut.result.current.targetDisabledReason).toBe("Sign in to use cloud workspaces");
+    signedOut.unmount();
+  });
+
+  it("clears the disabled reason once cloud branches resolve", () => {
+    resetMocks();
+    stateMocks.repository.selectedRepository.availability = "cloud";
+    stateMocks.repository.launchTarget = {
+      kind: "cloud",
+      gitOwner: "owner",
+      gitRepoName: "repo",
+      baseBranch: "main",
+    };
+    const ready = renderHomeNextState({ destination: "repository", repoLaunchKind: "cloud" });
+    expect(ready.result.current.targetDisabledReason).toBeNull();
+    expect(ready.result.current.canLaunchTarget).toBe(true);
+    ready.unmount();
   });
 
   it("forces the Web target model to repository Cloud and rejects local targets", () => {
