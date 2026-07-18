@@ -5,7 +5,6 @@ import {
   trackMobilePostHogScreenView,
   type MobileTelemetryScreen,
 } from "../../../lib/integrations/telemetry/posthog";
-import { addMobileSentryBreadcrumb } from "../../../lib/integrations/telemetry/sentry";
 
 export function useMobileScreenTelemetry(
   authState: MobileAuthState,
@@ -24,10 +23,6 @@ export function useMobileScreenTelemetry(
     }
 
     lastScreenRef.current = screen;
-    addMobileSentryBreadcrumb("mobile_screen_viewed", {
-      screen,
-      surface: "mobile",
-    });
     trackMobilePostHogScreenView(screen);
   }, [authState, screen]);
 }

@@ -6,10 +6,6 @@ import {
   initializeMobilePostHog,
   resetMobilePostHogUser,
 } from "../lib/integrations/telemetry/posthog";
-import {
-  clearMobileSentryUser,
-  setMobileSentryUser,
-} from "../lib/integrations/telemetry/sentry";
 import { useMobileAuth } from "./MobileAuthProvider";
 
 export function MobileTelemetryProvider({ children }: { children: ReactNode }) {
@@ -28,7 +24,6 @@ export function MobileTelemetryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (authState === "signed_out") {
       if (lastIdentityRef.current !== null) {
-        clearMobileSentryUser();
         resetMobilePostHogUser();
         lastIdentityRef.current = null;
       }
@@ -39,7 +34,6 @@ export function MobileTelemetryProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setMobileSentryUser(user.id);
     identifyMobilePostHogUser(user);
     lastIdentityRef.current = user.id;
   }, [authState, user]);
