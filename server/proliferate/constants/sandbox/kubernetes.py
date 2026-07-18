@@ -37,3 +37,12 @@ K8S_DEFAULT_RUNTIME_USER = "user"
 # Polling (connect_running_sandbox / resume_sandbox wait-for-Ready).
 K8S_DEFAULT_READY_TIMEOUT_SECONDS = 120
 K8S_READY_POLL_INTERVAL_SECONDS = 2.0
+
+# Default bound on the exec drain loop (run_command / write_file) when the
+# caller passes no `timeout_seconds`. E2B has no single per-command default
+# (E2B_TIMEOUT_SECONDS in e2b.py bounds sandbox create/connect, not exec) so
+# this is a standalone sane cap: without it, an exec whose remote command
+# never terminates would otherwise block the `to_thread` worker forever,
+# since the kubernetes WSClient only reports closed once the server ends the
+# stream.
+K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS = 300

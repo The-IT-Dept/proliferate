@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import re
 import shlex
 import time
 import uuid
@@ -25,6 +26,7 @@ from proliferate.config import settings
 from proliferate.constants.sandbox.kubernetes import (
     K8S_APP_LABEL_KEY,
     K8S_CONTAINER_NAME,
+    K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS,
     K8S_DEFAULT_READY_TIMEOUT_SECONDS,
     K8S_DEFAULT_RUNTIME_USER,
     K8S_HOME_VOLUME_NAME,
@@ -51,6 +53,20 @@ from proliferate.integrations.sandbox.base import (
 from proliferate.utils.time import utcnow
 
 logger = logging.getLogger("proliferate.cloud.kubernetes")
+
+# Shell identifier syntax -- deliberately conservative (no leading digit, no
+# punctuation) so a caller-supplied env key can never break out of the
+# `export {key}=...` interpolation in `_compose_shell_command`. The value is
+# still `shlex.quote`d separately.
+_ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# `write_file` embeds the base64 payload directly in the exec argv (see
+# `_write_file`) instead of streaming it over stdin, so it is bounded by the
+# kernel's ARG_MAX. Production callers only ever write small generated
+# scripts/TOML (see `sandbox_exec.py`), so this bound is never expected to
+# trip in practice -- it exists to fail loudly instead of silently truncating
+# or hanging if that ever changes.
+_MAX_WRITE_FILE_BASE64_BYTES = 256 * 1024
 
 
 class KubernetesRuntimeError(SandboxProviderConfigurationError):
@@ -195,6 +211,11 @@ def _compose_shell_command(
         wrapped += f"cd {shlex.quote(cwd)} && "
     if envs:
         for key, value in envs.items():
+            if not _ENV_KEY_PATTERN.match(key):
+                raise KubernetesRuntimeError(
+                    f"Refusing to export environment variable with invalid name {key!r}: "
+                    "must match ^[A-Za-z_][A-Za-z0-9_]*$"
+                )
             wrapped += f"export {key}={shlex.quote(value)}; "
     wrapped += command
     if user and user != K8S_DEFAULT_RUNTIME_USER:
@@ -205,18 +226,42 @@ def _compose_shell_command(
     return wrapped
 
 
-def _drain_exec_stream(resp: Any) -> _CommandResult:
-    """Read stdout/stderr to EOF, then read the exit code off the closed stream."""
+def _drain_exec_stream(resp: Any, *, timeout_seconds: float) -> _CommandResult:
+    """Read stdout/stderr until the stream closes, then read the exit code.
+
+    Bounded by a monotonic deadline: `resp.is_open()` only turns False once
+    the remote side ends the exec stream, so a remote command that never
+    terminates would otherwise block the calling `to_thread` worker forever.
+    The websocket is always closed on the way out (success, exit-code
+    failure, or timeout) via `finally`.
+    """
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
-    while resp.is_open():
-        resp.update(timeout=1)
-        if resp.peek_stdout():
-            stdout_chunks.append(resp.read_stdout())
-        if resp.peek_stderr():
-            stderr_chunks.append(resp.read_stderr())
-    exit_code = resp.returncode
-    resp.close()
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while resp.is_open():
+            if time.monotonic() >= deadline:
+                raise KubernetesUnavailableError(
+                    f"Kubernetes exec did not complete within {timeout_seconds}s"
+                )
+            resp.update(timeout=1)
+            if resp.peek_stdout():
+                stdout_chunks.append(resp.read_stdout())
+            if resp.peek_stderr():
+                stderr_chunks.append(resp.read_stderr())
+        try:
+            exit_code = resp.returncode
+        except (TypeError, KeyError, IndexError) as error:
+            # The WSClient derives the exit code from the exec error channel
+            # (`err['status']` / `err['details']['causes'][0]['message']`);
+            # an abnormal close can leave that channel empty or malformed,
+            # which raises here rather than yielding a real code. We cannot
+            # report a bogus exit code, so this is infra-unavailable.
+            raise KubernetesUnavailableError(
+                "Kubernetes exec closed without a readable exit code"
+            ) from error
+    finally:
+        resp.close()
     return _CommandResult(
         exit_code=int(exit_code) if exit_code is not None else 0,
         stdout="".join(stdout_chunks),
@@ -354,6 +399,9 @@ class KubernetesSandboxProvider:
             name=K8S_CONTAINER_NAME,
             image=settings.kubernetes_sandbox_image,
             command=["sleep", "infinity"],
+            ports=[
+                k8s.V1ContainerPort(name="runtime", container_port=K8S_RUNTIME_PORT),
+            ],
             volume_mounts=[
                 k8s.V1VolumeMount(name=K8S_HOME_VOLUME_NAME, mount_path=K8S_USER_HOME),
             ],
@@ -437,6 +485,15 @@ class KubernetesSandboxProvider:
                 return
             raise
 
+    def _delete_best_effort(self, fn: Any, name: str, namespace: str) -> None:
+        # Used only for cleanup after a failed create: the original error is
+        # what the caller needs to see, so any error here (including a
+        # non-404) is logged and swallowed rather than propagated.
+        try:
+            fn(name, namespace)
+        except Exception:
+            logger.warning("k8s best-effort cleanup delete failed name=%s", name, exc_info=True)
+
     # -- internals: lifecycle sync implementations -------------------------
 
     def _create_sandbox(self, metadata: dict[str, str] | None) -> SandboxHandle:
@@ -449,11 +506,35 @@ class KubernetesSandboxProvider:
         name = f"{K8S_SANDBOX_NAME_PREFIX}{uuid.uuid4().hex[:12]}"
         labels = self._labels(name)
         logger.info("k8s sandbox create started name=%s namespace=%s", name, namespace)
-        core_v1.create_namespaced_persistent_volume_claim(
-            namespace, self._build_pvc(k8s, name, labels)
-        )
-        core_v1.create_namespaced_pod(namespace, self._build_pod(k8s, name, labels))
-        core_v1.create_namespaced_service(namespace, self._build_service(k8s, name, labels))
+        pvc_created = False
+        pod_created = False
+        try:
+            core_v1.create_namespaced_persistent_volume_claim(
+                namespace, self._build_pvc(k8s, name, labels)
+            )
+            pvc_created = True
+            core_v1.create_namespaced_pod(namespace, self._build_pod(k8s, name, labels))
+            pod_created = True
+            core_v1.create_namespaced_service(namespace, self._build_service(k8s, name, labels))
+        except Exception:
+            # A partial create leaves an orphaned PVC/Pod with no id ever
+            # returned to the caller to reconcile against, so best-effort
+            # tear down whatever already landed before propagating -- a
+            # failed cleanup delete must not mask the original error.
+            logger.warning(
+                "k8s sandbox create failed, cleaning up partial objects name=%s "
+                "pvc_created=%s pod_created=%s",
+                name,
+                pvc_created,
+                pod_created,
+            )
+            if pod_created:
+                self._delete_best_effort(core_v1.delete_namespaced_pod, name, namespace)
+            if pvc_created:
+                self._delete_best_effort(
+                    core_v1.delete_namespaced_persistent_volume_claim, name, namespace
+                )
+            raise
         logger.info("k8s sandbox create finished name=%s", name)
         return SandboxHandle(
             provider=self.kind,
@@ -579,7 +660,14 @@ class KubernetesSandboxProvider:
 
     # -- internals: exec sync implementations -------------------------------
 
-    def _exec_stream(self, sandbox: _K8sSandbox, argv: list[str], *, stdin: bool) -> Any:
+    def _exec_stream(self, sandbox: _K8sSandbox, argv: list[str]) -> Any:
+        # `stdin` is always False: both `run_command` and `write_file` embed
+        # their entire payload in `argv` rather than streaming it, because
+        # the kubernetes WSClient has no stdin half-close -- EOF only
+        # arrives when the whole socket closes -- so a command reading
+        # stdin to EOF (e.g. `base64 -d`) would otherwise deadlock forever
+        # waiting for a close that the drain loop is itself waiting to
+        # trigger. See `_write_file` for the argv-embedding this enables.
         stream_fn = _load_stream()
         core_v1 = _load_client()
         return stream_fn(
@@ -588,7 +676,7 @@ class KubernetesSandboxProvider:
             sandbox.namespace,
             command=argv,
             stderr=True,
-            stdin=stdin,
+            stdin=False,
             stdout=True,
             tty=False,
             _preload_content=False,
@@ -604,30 +692,47 @@ class KubernetesSandboxProvider:
         background: bool,
         timeout_seconds: int | None,
     ) -> _CommandResult:
-        # Not wired to the exec transport in M2 -- the caller (see
-        # sandbox_exec.py) is expected to bound the awaitable itself.
-        del timeout_seconds
+        # `timeout_seconds` bounds the drain loop below (defaults to
+        # K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS when unset): the sole caller
+        # (see sandbox_exec.py) awaits `run_command` with no timeout of its
+        # own, so an unbounded drain here would hang that awaiter -- and the
+        # `to_thread` worker under it -- forever on a non-terminating
+        # command.
+        effective_timeout_seconds = (
+            timeout_seconds if timeout_seconds is not None else K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS
+        )
         wrapped = _compose_shell_command(command, user=user, cwd=cwd, envs=envs)
         if background:
             wrapped = f"nohup {wrapped} >/dev/null 2>&1 &"
-            resp = self._exec_stream(sandbox, ["/bin/sh", "-lc", wrapped], stdin=False)
+            resp = self._exec_stream(sandbox, ["/bin/sh", "-lc", wrapped])
             # Backgrounding detaches the job immediately; the outer shell's
             # own exit code/output is not meaningful to the caller (unused
             # upstream), so drain to let it finish but return a fixed,
             # trivially-successful result rather than propagate it.
-            _drain_exec_stream(resp)
+            _drain_exec_stream(resp, timeout_seconds=effective_timeout_seconds)
             return _CommandResult(exit_code=0, stdout="", stderr="")
-        resp = self._exec_stream(sandbox, ["/bin/sh", "-lc", wrapped], stdin=False)
-        return _drain_exec_stream(resp)
+        resp = self._exec_stream(sandbox, ["/bin/sh", "-lc", wrapped])
+        return _drain_exec_stream(resp, timeout_seconds=effective_timeout_seconds)
 
     def _write_file(self, sandbox: _K8sSandbox, path: str, content: bytes | str) -> None:
+        # The base64 payload is embedded directly in the exec argv (no
+        # stdin) -- see `_exec_stream` for why: a stdin-fed `base64 -d`
+        # would block forever waiting for an EOF the WSClient transport
+        # cannot deliver without closing the whole stream first.
         data = content.encode("utf-8") if isinstance(content, str) else content
         encoded = base64.b64encode(data).decode("ascii")
+        if len(encoded) > _MAX_WRITE_FILE_BASE64_BYTES:
+            raise KubernetesUnavailableError(
+                f"Kubernetes file write to {path} is {len(encoded)} base64 bytes, "
+                f"exceeding the {_MAX_WRITE_FILE_BASE64_BYTES}-byte argv-embedded limit"
+            )
         quoted_path = shlex.quote(path)
-        script = f'mkdir -p "$(dirname {quoted_path})" && base64 -d > {quoted_path}'
-        resp = self._exec_stream(sandbox, ["/bin/sh", "-c", script], stdin=True)
-        resp.write_stdin(encoded)
-        result = _drain_exec_stream(resp)
+        script = (
+            f'mkdir -p "$(dirname {quoted_path})" && '
+            f"printf %s {shlex.quote(encoded)} | base64 -d > {quoted_path}"
+        )
+        resp = self._exec_stream(sandbox, ["/bin/sh", "-c", script])
+        result = _drain_exec_stream(resp, timeout_seconds=K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS)
         if result.exit_code != 0:
             raise KubernetesUnavailableError(
                 f"Kubernetes file write to {path} failed with exit code "

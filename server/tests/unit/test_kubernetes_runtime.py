@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import shlex
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -168,50 +169,88 @@ class _FakeCoreV1Api:
 
 
 class _FakeWSClient:
-    """Fake `kubernetes.stream.ws_client.WSClient`."""
+    """Fake `kubernetes.stream.ws_client.WSClient`.
 
-    def __init__(self, *, stdout: str = "", stderr: str = "", returncode: int = 0) -> None:
-        self._stdout = stdout
-        self._stderr = stderr
+    Three delivery modes, chosen by which constructor args are passed:
+
+    - default (`stdout`/`stderr`/`returncode`): all output + closure
+      "arrive" on the first `update()` call -- no real I/O, exercises the
+      single-poll path most tests use.
+    - `frames`: each `update()` call delivers one (stdout, stderr) chunk and
+      the stream only closes once every frame has been delivered, exercising
+      the multi-poll drain path (exit-code-after-close ordering across
+      frames).
+    - `stay_open=True`: `is_open()` never turns False and `update()` is a
+      no-op -- models a command that never terminates, for exercising
+      `run_command`'s timeout enforcement without any real sleep (the fake
+      never blocks; the deadline is what ends the loop).
+    """
+
+    def __init__(
+        self,
+        *,
+        stdout: str = "",
+        stderr: str = "",
+        returncode: int | None = 0,
+        returncode_raises: BaseException | None = None,
+        frames: list[tuple[str, str]] | None = None,
+        stay_open: bool = False,
+    ) -> None:
+        self._frames = list(frames) if frames is not None else None
+        self._pending_stdout = "" if self._frames is not None else stdout
+        self._pending_stderr = "" if self._frames is not None else stderr
         self._returncode = returncode
+        self._returncode_raises = returncode_raises
+        self._stay_open = stay_open
         self._open = True
-        self.written_stdin: list[str] = []
         self.closed = False
+        self.update_calls = 0
 
     def is_open(self) -> bool:
         return self._open
 
     def update(self, timeout: float | None = None) -> None:
         del timeout
-        # All data + closure "arrives" on the first poll -- no real I/O.
+        self.update_calls += 1
+        if self._stay_open:
+            # Never closes -- the caller's deadline is what must end this.
+            return
+        if self._frames is not None:
+            if self._frames:
+                out, err = self._frames.pop(0)
+                self._pending_stdout += out
+                self._pending_stderr += err
+            if not self._frames:
+                self._open = False
+            return
+        # Default mode: all data + closure "arrives" on the first poll.
         self._open = False
 
     def peek_stdout(self) -> bool:
-        return bool(self._stdout)
+        return bool(self._pending_stdout)
 
     def read_stdout(self) -> str:
-        value = self._stdout
-        self._stdout = ""
+        value = self._pending_stdout
+        self._pending_stdout = ""
         return value
 
     def peek_stderr(self) -> bool:
-        return bool(self._stderr)
+        return bool(self._pending_stderr)
 
     def read_stderr(self) -> str:
-        value = self._stderr
-        self._stderr = ""
+        value = self._pending_stderr
+        self._pending_stderr = ""
         return value
 
     @property
-    def returncode(self) -> int:
+    def returncode(self) -> int | None:
+        if self._returncode_raises is not None:
+            raise self._returncode_raises
         return self._returncode
 
     def close(self, **kwargs: Any) -> None:
         del kwargs
         self.closed = True
-
-    def write_stdin(self, data: str) -> None:
-        self.written_stdin.append(data)
 
 
 def _make_fake_stream(captured: dict[str, Any], ws_client: Any) -> Any:
@@ -305,6 +344,8 @@ def test_create_sandbox_builds_pvc_pod_service_and_returns_handle(
     container = pod.spec.containers[0]
     assert container.image == "ghcr.io/the-it-dept/proliferate-sandbox:stable"
     assert container.command == ["sleep", "infinity"]
+    assert container.ports[0].name == "runtime"
+    assert container.ports[0].container_port == 8457
     assert container.volume_mounts[0].mount_path == "/home/user"
     assert container.resources.requests == {"cpu": "500m", "memory": "1Gi"}
     assert container.resources.limits == {"cpu": "2", "memory": "4Gi"}
@@ -333,6 +374,37 @@ def test_create_sandbox_sets_service_account_when_configured(
 
     pod = fake_api.created_pod_bodies[0]
     assert pod.spec.service_account_name == "sandbox-sa"
+
+
+def test_create_sandbox_cleans_up_pvc_and_pod_when_service_create_fails(
+    fake_api: _FakeCoreV1Api,
+    provider: k8s_runtime.KubernetesSandboxProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A failure creating the Service (the last of the three objects) must
+    # not orphan the PVC and Pod that already landed -- create_sandbox never
+    # returned an id for the caller to reconcile against, so cleanup here is
+    # the only thing standing between this and a permanently leaked PVC+Pod.
+    def _failing_create_service(namespace: str, body: Any) -> Any:
+        del namespace, body
+        raise _FakeApiException(500)
+
+    monkeypatch.setattr(fake_api, "create_namespaced_service", _failing_create_service)
+
+    with pytest.raises(_FakeApiException):
+        asyncio.run(provider.create_sandbox())
+
+    assert len(fake_api.created_pvc_bodies) == 1
+    assert len(fake_api.created_pod_bodies) == 1
+    name = fake_api.created_pvc_bodies[0].metadata.name
+
+    assert fake_api.deleted_pods == [name]
+    assert fake_api.deleted_pvcs == [name]
+    # Actually removed from the fake cluster state, not just attempted.
+    assert name not in fake_api.pods
+    assert name not in fake_api.pvcs
+    # The service was never created, so there is nothing to clean up there.
+    assert fake_api.deleted_services == []
 
 
 # -- resolve_runtime_endpoint / resolve_runtime_context -----------------------
@@ -385,6 +457,18 @@ def test_get_sandbox_state_maps_pod_phase(
     assert state is not None
     assert state.external_sandbox_id == "sbx-x"
     assert state.state == expected_state
+
+
+def test_get_sandbox_state_populates_started_at_from_pod_status(
+    fake_api: _FakeCoreV1Api, provider: k8s_runtime.KubernetesSandboxProvider
+) -> None:
+    start_time = datetime(2026, 7, 18, 10, 30, 0, tzinfo=UTC)
+    fake_api.pods["sbx-x"] = _make_pod("sbx-x", phase="Running", ready=True, start_time=start_time)
+
+    state = asyncio.run(provider.get_sandbox_state("sbx-x"))
+
+    assert state is not None
+    assert state.started_at == start_time
 
 
 def test_get_sandbox_state_pod_absent_pvc_present_is_paused(
@@ -641,10 +725,26 @@ def test_run_command_raises_on_transport_failure(
     assert isinstance(exc_info.value, sandbox_base.SandboxProviderUnavailableError)
 
 
-# -- write_file --------------------------------------------------------------
+def test_run_command_rejects_malicious_env_key_instead_of_interpolating_it(
+    fake_api: _FakeCoreV1Api,
+    provider: k8s_runtime.KubernetesSandboxProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The env VALUE is shlex.quote'd, but a raw KEY would be interpolated
+    # unescaped into `export {key}=...`; a key like this would otherwise
+    # break out of the export statement and run an arbitrary command.
+    captured: dict[str, Any] = {}
+    ws = _FakeWSClient(returncode=0)
+    monkeypatch.setattr(k8s_runtime, "_load_stream", lambda: _make_fake_stream(captured, ws))
+
+    with pytest.raises(k8s_runtime.KubernetesRuntimeError):
+        asyncio.run(provider.run_command(_sandbox(), "echo hi", envs={"X; touch /pwned": "1"}))
+
+    # Rejected before ever reaching the transport -- nothing was executed.
+    assert captured == {}
 
 
-def test_write_file_base64_round_trips_bytes_and_mkdirs_parent(
+def test_run_command_accepts_a_valid_env_key(
     fake_api: _FakeCoreV1Api,
     provider: k8s_runtime.KubernetesSandboxProvider,
     monkeypatch: pytest.MonkeyPatch,
@@ -653,21 +753,132 @@ def test_write_file_base64_round_trips_bytes_and_mkdirs_parent(
     ws = _FakeWSClient(returncode=0)
     monkeypatch.setattr(k8s_runtime, "_load_stream", lambda: _make_fake_stream(captured, ws))
 
-    asyncio.run(
-        provider.write_file(_sandbox(), "/home/user/workspace/notes/a.txt", b"hello world")
+    asyncio.run(provider.run_command(_sandbox(), "echo hi", envs={"_FOO_9": "bar"}))
+
+    assert captured["kwargs"]["command"] == ["/bin/sh", "-lc", "export _FOO_9=bar; echo hi"]
+
+
+def test_run_command_enforces_timeout_and_closes_the_stream(
+    fake_api: _FakeCoreV1Api,
+    provider: k8s_runtime.KubernetesSandboxProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `stay_open=True` models a remote command that never terminates: the
+    # fake never blocks (no real I/O, no real sleep), so the only thing that
+    # can end this test is `run_command` enforcing its own monotonic
+    # deadline. `timeout_seconds=0` makes that deadline already-elapsed by
+    # the time the drain loop takes its first reading, so this resolves
+    # near-instantly with no sleeping of any kind.
+    ws = _FakeWSClient(stay_open=True)
+    monkeypatch.setattr(k8s_runtime, "_load_stream", lambda: _make_fake_stream({}, ws))
+
+    with pytest.raises(k8s_runtime.KubernetesUnavailableError) as exc_info:
+        asyncio.run(provider.run_command(_sandbox(), "sleep 9999", timeout_seconds=0))
+
+    assert isinstance(exc_info.value, sandbox_base.SandboxProviderUnavailableError)
+    # The websocket must be closed even though the loop exited via timeout,
+    # not via the stream reporting itself closed.
+    assert ws.closed is True
+
+
+def test_run_command_drains_output_delivered_across_multiple_update_polls(
+    fake_api: _FakeCoreV1Api,
+    provider: k8s_runtime.KubernetesSandboxProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Output arriving over several `update()` polls (rather than all at once
+    # on the first poll) exercises that stdout/stderr accumulate correctly
+    # across frames and that the exit code is only read once the stream
+    # actually reports closed, after the last frame.
+    captured: dict[str, Any] = {}
+    ws = _FakeWSClient(
+        frames=[("chunk-1 ", ""), ("chunk-2 ", "warn "), ("chunk-3", "later")],
+        returncode=3,
     )
+    monkeypatch.setattr(k8s_runtime, "_load_stream", lambda: _make_fake_stream(captured, ws))
+
+    result = asyncio.run(provider.run_command(_sandbox(), "echo hi"))
+
+    assert result.stdout == "chunk-1 chunk-2 chunk-3"
+    assert result.stderr == "warn later"
+    assert result.exit_code == 3
+    assert ws.update_calls == 3
+    assert ws.closed is True
+
+
+def test_run_command_raises_unavailable_when_returncode_is_unreadable(
+    fake_api: _FakeCoreV1Api,
+    provider: k8s_runtime.KubernetesSandboxProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Mirrors the real WSClient.returncode: on an abnormal close it derives
+    # the exit code from the exec error channel and can raise TypeError
+    # (`None['status']`) when that channel comes back empty. A bogus exit
+    # code must never be reported, so this must surface as unavailable.
+    ws = _FakeWSClient(returncode_raises=TypeError("'NoneType' object is not subscriptable"))
+    monkeypatch.setattr(k8s_runtime, "_load_stream", lambda: _make_fake_stream({}, ws))
+
+    with pytest.raises(k8s_runtime.KubernetesUnavailableError) as exc_info:
+        asyncio.run(provider.run_command(_sandbox(), "echo hi"))
+
+    assert isinstance(exc_info.value, sandbox_base.SandboxProviderUnavailableError)
+    assert ws.closed is True
+
+
+# -- write_file --------------------------------------------------------------
+#
+# `write_file` embeds the base64 payload directly in the exec argv instead
+# of streaming it over stdin (see kubernetes.py:_exec_stream for why: the
+# kubernetes WSClient has no stdin half-close, so a stdin-fed `base64 -d`
+# would block forever waiting for an EOF the transport cannot deliver
+# without closing the whole stream first -- exactly what the drain loop is
+# waiting on, i.e. a deadlock). These tests model a realistic exec: the
+# command runs and returns exit 0/nonzero, with NO reliance on stdin at all
+# -- `_FakeWSClient` no longer even has a `write_stdin` method, so a
+# regression back to the old stdin-based approach would fail with an
+# AttributeError, not a false pass.
+
+
+def _script_prefix(quoted_path: str) -> str:
+    return f'mkdir -p "$(dirname {quoted_path})" && printf %s '
+
+
+def _script_suffix(quoted_path: str) -> str:
+    return f" | base64 -d > {quoted_path}"
+
+
+def _extract_embedded_base64(script: str, path: str) -> str:
+    quoted_path = shlex.quote(path)
+    prefix = _script_prefix(quoted_path)
+    suffix = _script_suffix(quoted_path)
+    assert script.startswith(prefix)
+    assert script.endswith(suffix)
+    return script[len(prefix) : len(script) - len(suffix)]
+
+
+def test_write_file_embeds_base64_of_bytes_content_in_argv_and_mkdirs_parent(
+    fake_api: _FakeCoreV1Api,
+    provider: k8s_runtime.KubernetesSandboxProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+    ws = _FakeWSClient(returncode=0)
+    monkeypatch.setattr(k8s_runtime, "_load_stream", lambda: _make_fake_stream(captured, ws))
 
     path = "/home/user/workspace/notes/a.txt"
-    assert captured["kwargs"]["command"] == [
-        "/bin/sh",
-        "-c",
-        f'mkdir -p "$(dirname {path})" && base64 -d > {path}',
-    ]
-    assert captured["kwargs"]["stdin"] is True
-    assert ws.written_stdin == [base64.b64encode(b"hello world").decode("ascii")]
+    content = b"hello world"
+    asyncio.run(provider.write_file(_sandbox(), path, content))
+
+    command = captured["kwargs"]["command"]
+    assert command[:2] == ["/bin/sh", "-c"]
+    script = command[2]
+    embedded = _extract_embedded_base64(script, path)
+    assert base64.b64decode(embedded) == content
+    # No stdin at all -- the whole payload travels in argv.
+    assert captured["kwargs"]["stdin"] is False
 
 
-def test_write_file_accepts_str_content(
+def test_write_file_embeds_base64_of_str_content_in_argv(
     fake_api: _FakeCoreV1Api,
     provider: k8s_runtime.KubernetesSandboxProvider,
     monkeypatch: pytest.MonkeyPatch,
@@ -676,9 +887,13 @@ def test_write_file_accepts_str_content(
     ws = _FakeWSClient(returncode=0)
     monkeypatch.setattr(k8s_runtime, "_load_stream", lambda: _make_fake_stream(captured, ws))
 
-    asyncio.run(provider.write_file(_sandbox(), "/home/user/workspace/a.txt", "hello"))
+    path = "/home/user/workspace/a.txt"
+    content = "hello"
+    asyncio.run(provider.write_file(_sandbox(), path, content))
 
-    assert ws.written_stdin == [base64.b64encode(b"hello").decode("ascii")]
+    script = captured["kwargs"]["command"][2]
+    embedded = _extract_embedded_base64(script, path)
+    assert base64.b64decode(embedded) == content.encode("utf-8")
 
 
 def test_write_file_shell_quotes_a_path_with_special_characters(
@@ -694,11 +909,11 @@ def test_write_file_shell_quotes_a_path_with_special_characters(
     asyncio.run(provider.write_file(_sandbox(), path, "hi"))
 
     quoted = shlex.quote(path)
-    assert captured["kwargs"]["command"] == [
-        "/bin/sh",
-        "-c",
-        f'mkdir -p "$(dirname {quoted})" && base64 -d > {quoted}',
-    ]
+    script = captured["kwargs"]["command"][2]
+    assert script.startswith(f'mkdir -p "$(dirname {quoted})" && ')
+    assert script.endswith(f" | base64 -d > {quoted}")
+    embedded = _extract_embedded_base64(script, path)
+    assert base64.b64decode(embedded) == b"hi"
 
 
 def test_write_file_raises_provider_unavailable_on_nonzero_exit(
@@ -711,6 +926,29 @@ def test_write_file_raises_provider_unavailable_on_nonzero_exit(
 
     with pytest.raises(k8s_runtime.KubernetesUnavailableError) as exc_info:
         asyncio.run(provider.write_file(_sandbox(), "/home/user/workspace/a.txt", "hi"))
+
+    assert isinstance(exc_info.value, sandbox_base.SandboxProviderUnavailableError)
+
+
+def test_write_file_rejects_payload_exceeding_the_argv_size_guard(
+    provider: k8s_runtime.KubernetesSandboxProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _stream_loader_should_not_be_called() -> Any:
+        raise AssertionError(
+            "write_file must reject an oversized payload before touching the transport"
+        )
+
+    monkeypatch.setattr(k8s_runtime, "_load_stream", _stream_loader_should_not_be_called)
+
+    # 300 KiB of raw bytes base64-encodes to ~400 KiB, comfortably past the
+    # 256 KiB argv-embedded guard.
+    oversized_content = b"a" * (300 * 1024)
+
+    with pytest.raises(k8s_runtime.KubernetesUnavailableError) as exc_info:
+        asyncio.run(
+            provider.write_file(_sandbox(), "/home/user/workspace/big.bin", oversized_content)
+        )
 
     assert isinstance(exc_info.value, sandbox_base.SandboxProviderUnavailableError)
 
