@@ -23,6 +23,13 @@ overrides:
   # satisfies @expo/log-box's ^56.0.6 peer range and forked a duplicate expo@56
   # install (flagged by expo-doctor's duplicate-native-module check).
   "@expo/dom-webview": "56.0.6"
+  # react-native 0.85.3 bundles react-native-renderer 19.2.3 (baked in at RN build
+  # time, not a separately installed package), and React requires `react` to match
+  # the renderer exactly. Force a single react/react-dom 19.2.3 across the whole
+  # workspace so no transitive dep can reintroduce a 19.2.x mismatch that crashes
+  # the app with "Incompatible React versions".
+  "react": "19.2.3"
+  "react-dom": "19.2.3"
 
 allowBuilds:
   "@sentry/cli": true
