@@ -1,4 +1,4 @@
-import type { AgentLoginTerminalRecord } from "@anyharness/sdk";
+import type { AgentLoginTerminalRecord, TerminalWebSocketAuthTransport } from "@anyharness/sdk";
 import { connectAgentLoginTerminal, type TerminalStreamHandle } from "@anyharness/sdk";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useXtermSurface } from "#product/hooks/terminals/lifecycle/use-xterm-surface";
@@ -7,6 +7,10 @@ interface UseAgentLoginTerminalViewportInput {
   terminal: AgentLoginTerminalRecord | null;
   baseUrl: string;
   authToken?: string;
+  // Cloud sandbox connections authenticate the WS handshake via the
+  // Sec-WebSocket-Protocol header instead of a query-string token (the
+  // gateway's contract — see cloud-sandbox-gateway.ts). Undefined for local.
+  webSocketAuthTransport?: TerminalWebSocketAuthTransport;
   visible: boolean;
   focusRequestToken: number;
   onExit: (code: number | null) => void;
@@ -16,6 +20,7 @@ export function useAgentLoginTerminalViewport({
   terminal,
   baseUrl,
   authToken,
+  webSocketAuthTransport,
   visible,
   focusRequestToken,
   onExit,
@@ -71,6 +76,7 @@ export function useAgentLoginTerminalViewport({
     const handle = connectAgentLoginTerminal({
       baseUrl,
       authToken,
+      webSocketAuthTransport,
       terminalId,
       afterSeq: lastSeqRef.current > 0 ? lastSeqRef.current : undefined,
       onData: (data, frame) => {
@@ -99,7 +105,7 @@ export function useAgentLoginTerminalViewport({
       }
       handle.close();
     };
-  }, [authToken, baseUrl, isReady, terminal, terminalRef, visible, write]);
+  }, [authToken, baseUrl, isReady, terminal, terminalRef, visible, webSocketAuthTransport, write]);
 
   return {
     connectionError,
