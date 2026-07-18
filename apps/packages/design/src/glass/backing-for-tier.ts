@@ -45,15 +45,18 @@ export function backingForTier(
   tier: GlassTier,
   variant: GlassSurfaceVariant,
   tokens: GlassTokens,
+  glassStyle: GlassStyle = "regular",
 ): BackingResult {
   const shape = shapeStyle(variant, tokens);
 
   switch (tier) {
     case "native":
-      // §3.1 tier 1: native UIGlassEffect/.glassEffect. glassEffectStyle
-      // defaults to "regular" here; GlassSurface merges the call-site's
-      // `glassStyle` prop ("regular" | "clear") on top.
-      return { kind: "GlassView", props: { glassEffectStyle: "regular", style: shape } };
+      // §3.1 tier 1: native UIGlassEffect/.glassEffect. This is the single
+      // source of truth for glassEffectStyle — it resolves the call-site's
+      // `glassStyle` prop ("regular" | "clear") directly, so GlassSurface
+      // doesn't need (and must not keep) its own separate copy of this
+      // decision.
+      return { kind: "GlassView", props: { glassEffectStyle: glassStyle, style: shape } };
 
     case "blur":
       // §3.1 tier 2: expo-blur BlurView, systemChromeMaterial(Dark),
@@ -68,14 +71,9 @@ export function backingForTier(
       };
 
     case "opaque":
-      // §3.1 tier 3 (Reduce Transparency): opaque surfaceElevated, zero blur.
-      return {
-        kind: "View",
-        props: { style: { ...shape, backgroundColor: tokens.surface.raised } },
-      };
-
-    case "bordered":
-      // §3.1 tier 4 (Increase Contrast): full-perimeter hairline border.
+      // §3.1 tier 3 (Reduce Transparency): opaque surfaceElevated + hairline
+      // border, zero blur — the border keeps the raised surface visibly
+      // bounded now that there's no blur/specular edge to imply its extent.
       return {
         kind: "View",
         props: {
@@ -84,6 +82,21 @@ export function backingForTier(
             backgroundColor: tokens.surface.raised,
             borderWidth: 1,
             borderColor: tokens.border.hairline,
+          },
+        },
+      };
+
+    case "bordered":
+      // §3.1 tier 4 (Increase Contrast): full-perimeter separatorHeavy
+      // border — heavier than the tier-3 hairline.
+      return {
+        kind: "View",
+        props: {
+          style: {
+            ...shape,
+            backgroundColor: tokens.surface.raised,
+            borderWidth: 1,
+            borderColor: tokens.border.separatorHeavy,
           },
         },
       };

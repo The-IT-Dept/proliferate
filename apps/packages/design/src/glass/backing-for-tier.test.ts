@@ -12,6 +12,12 @@ describe("backingForTier", () => {
     expect(backing.props).toMatchObject({ glassEffectStyle: "regular" });
   });
 
+  it("is the single source of truth for glassEffectStyle: it passes the call-site's glassStyle through to the native GlassView backing", () => {
+    const backing = backingForTier("native", "nav", dark, "clear");
+    expect(backing.kind).toBe("GlassView");
+    expect(backing.props).toMatchObject({ glassEffectStyle: "clear" });
+  });
+
   it("renders blur tier as a BlurView with a dark system chrome material tint at full intensity", () => {
     const backing = backingForTier("blur", "nav", dark);
     expect(backing.kind).toBe("BlurView");
@@ -40,13 +46,22 @@ describe("backingForTier", () => {
     expect(backing.props).not.toHaveProperty("glassEffectStyle");
   });
 
-  it("renders bordered tier as a View with a full-perimeter hairline border (§3.1 tier 4)", () => {
-    const backing = backingForTier("bordered", "nav", dark);
-    expect(backing.kind).toBe("View");
+  it("adds a hairline border to the opaque fallback so the raised surface is visibly bounded (§3.1 tier 3)", () => {
+    const backing = backingForTier("opaque", "nav", dark);
     expect(backing.props.style).toMatchObject({
       borderWidth: 1,
       borderColor: dark.border.hairline,
     });
+  });
+
+  it("renders bordered tier as a View with a full-perimeter separatorHeavy border, heavier than the hairline (§3.1 tier 4)", () => {
+    const backing = backingForTier("bordered", "nav", dark);
+    expect(backing.kind).toBe("View");
+    expect(backing.props.style).toMatchObject({
+      borderWidth: 1,
+      borderColor: dark.border.separatorHeavy,
+    });
+    expect(backing.props.style?.borderColor).not.toBe(dark.border.hairline);
   });
 
   it("never sets opacity to 0 to hide glass, on any tier", () => {

@@ -11,15 +11,26 @@
 
 export type GlassTheme = "light" | "dark";
 
+/** One §4 elevation level, expressed as RN's shadow* props plus the
+ * Android-only `elevation` fallback (RN's shadow* props are iOS-only). */
+export interface ShadowToken {
+  shadowColor: string;
+  shadowOffset: { width: number; height: number };
+  shadowOpacity: number;
+  shadowRadius: number;
+  elevation: number;
+}
+
 export interface GlassTokens {
   surface: { base: string; raised: string; body: string };
   tint: string;
   glassTint: { light: string; dark: string };
-  border: { hairline: string };
+  border: { hairline: string; separatorHeavy: string };
   text: { primary: string; secondary: string; mono: string };
   elevation: Record<"nav" | "tab" | "sheet" | "fab", number>;
   radius: Record<"sm" | "md" | "lg" | "capsule", number>;
   spacing: (n: number) => number;
+  shadow: Record<"flat" | "raised" | "floating", ShadowToken>;
 }
 
 // §5 — SF Mono is mandatory for any git/shell-addressable text, in both
@@ -67,6 +78,9 @@ export function glassTokens(theme: GlassTheme): GlassTokens {
     border: {
       // §2.1 separator.
       hairline: dark ? "rgba(255,255,255,0.084)" : "rgba(0,0,0,0.09)",
+      // §2.1 separatorHeavy — heavier than the hairline; used for the tier-4
+      // (Increase Contrast) full-perimeter border (§3.1 tier 4).
+      separatorHeavy: dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.16)",
     },
     text: {
       // §2.1 ink/fg.
@@ -95,5 +109,37 @@ export function glassTokens(theme: GlassTheme): GlassTokens {
     },
     // §6 base 4pt grid.
     spacing: (n: number) => n * 4,
+    // §4 elevation: a SHADOW scale (not the glass z-order stacking above),
+    // expressed as RN's iOS shadow* props (a CSS `0 {y}px {blur}px
+    // rgba(0,0,0,{opacity})` box-shadow decomposes directly into
+    // shadowOffset.height/shadowRadius/shadowOpacity) plus the Android-only
+    // `elevation` fallback. The design doc doesn't specify Android dp values,
+    // so `elevation` is chosen to grow with each level's visual depth,
+    // following Material Design's own elevation convention (resting
+    // cards/menus ~2dp, floating action buttons/sheets ~8dp+) as the nearest
+    // documented reference.
+    shadow: {
+      flat: {
+        shadowColor: "#000000",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
+      },
+      raised: {
+        shadowColor: "#000000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: dark ? 0.24 : 0.1,
+        shadowRadius: dark ? 2 : 3,
+        elevation: 2,
+      },
+      floating: {
+        shadowColor: "#000000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: dark ? 0.42 : 0.16,
+        shadowRadius: 30,
+        elevation: 8,
+      },
+    },
   };
 }

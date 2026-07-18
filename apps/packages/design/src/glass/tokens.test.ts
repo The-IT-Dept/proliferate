@@ -43,6 +43,13 @@ describe("glassTokens", () => {
     expect(light.border.hairline).toBe("rgba(0,0,0,0.09)");
   });
 
+  it("resolves the §2.1 separatorHeavy border used by the tier-4 (Increase Contrast) full-perimeter border", () => {
+    const dark = glassTokens("dark");
+    const light = glassTokens("light");
+    expect(dark.border.separatorHeavy).toBe("rgba(255,255,255,0.14)");
+    expect(light.border.separatorHeavy).toBe("rgba(0,0,0,0.16)");
+  });
+
   it("resolves primary/secondary text (ink/inkSecondary) per theme, and a shared mono font stack", () => {
     const dark = glassTokens("dark");
     const light = glassTokens("light");
@@ -84,6 +91,49 @@ describe("glassTokens", () => {
   it("isDarkTheme recovers which theme a resolved GlassTokens came from", () => {
     expect(isDarkTheme(glassTokens("dark"))).toBe(true);
     expect(isDarkTheme(glassTokens("light"))).toBe(false);
+  });
+
+  it("exposes the §4 elevation SHADOW scale (flat/raised/floating) as RN shadow + Android elevation values", () => {
+    const dark = glassTokens("dark");
+    const light = glassTokens("light");
+
+    // flat: no shadow, in either theme.
+    expect(dark.shadow.flat.shadowOpacity).toBe(0);
+    expect(dark.shadow.flat.elevation).toBe(0);
+
+    // raised (dark): 0 1px 2px rgba(0,0,0,0.24).
+    expect(dark.shadow.raised).toMatchObject({
+      shadowColor: "#000000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.24,
+      shadowRadius: 2,
+    });
+    // raised (light): 0 1px 3px rgba(0,0,0,0.10).
+    expect(light.shadow.raised).toMatchObject({
+      shadowColor: "#000000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3,
+    });
+
+    // floating (dark): 0 10px 30px rgba(0,0,0,0.42) — glass docks/FABs/sheets.
+    expect(dark.shadow.floating).toMatchObject({
+      shadowColor: "#000000",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.42,
+      shadowRadius: 30,
+    });
+    // floating (light): 0 10px 30px rgba(0,0,0,0.16).
+    expect(light.shadow.floating).toMatchObject({
+      shadowColor: "#000000",
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.16,
+      shadowRadius: 30,
+    });
+
+    // Android elevation grows monotonically with the shadow's visual depth.
+    expect(dark.shadow.flat.elevation).toBeLessThan(dark.shadow.raised.elevation);
+    expect(dark.shadow.raised.elevation).toBeLessThan(dark.shadow.floating.elevation);
   });
 
   it("spaces on the 4pt grid (§6)", () => {

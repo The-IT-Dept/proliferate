@@ -16,8 +16,10 @@ describe("formatContextCapsule", () => {
 });
 
 describe("statusDotColor", () => {
-  it("colors running as the tint (busy/active accent)", () => {
-    expect(statusDotColor("running", dark)).toBe(dark.tint);
+  it("colors running as the live tone (success green, §2.3) with a breathing dot, not the busy tint", () => {
+    expect(statusDotColor("running", dark)).toBe("#40C977");
+    expect(statusDotColor("running", light)).toBe("#1FA85C");
+    expect(statusDotColor("running", dark)).not.toBe(dark.tint);
   });
 
   it("colors awaiting as the attention (warning) color", () => {
