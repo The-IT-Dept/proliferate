@@ -46,13 +46,16 @@ async def _provision_cloud_sandbox_worker_token(
     db_session: AsyncSession,
     *,
     owner_user_id: str,
-) -> str:
+) -> tuple[str, UUID]:
     """Mint a runtime-worker bearer token via the real enrollment flow.
 
     Mirrors how a cloud sandbox actually gets its token at provision time:
     mint a pending enrollment for the sandbox, then exchange it for a worker
     token — the same token family the worker already uses to authenticate
     back to Cloud (``CloudRuntimeWorker.token_hash``).
+
+    Returns ``(worker_token, cloud_sandbox_id)`` — the sandbox id is exposed
+    because the push dedupe key is scoped to it (Fix 2).
     """
     sandbox = CloudSandbox(
         owner_user_id=UUID(owner_user_id),
@@ -72,7 +75,7 @@ async def _provision_cloud_sandbox_worker_token(
         request=WorkerEnrollRequest(enrollment_token=enrollment_token),
     )
     await db_session.commit()
-    return enroll_response.worker_token
+    return enroll_response.worker_token, sandbox.id
 
 
 async def _outbox_rows_for_idempotency_key(
@@ -93,7 +96,7 @@ class TestInteractionPushWebhook:
         db_session: AsyncSession,
     ) -> None:
         owner_user_id = await _create_owner(db_session, email="push-webhook-owner@example.com")
-        token = await _provision_cloud_sandbox_worker_token(
+        token, cloud_sandbox_id = await _provision_cloud_sandbox_worker_token(
             db_session, owner_user_id=owner_user_id
         )
 
@@ -113,7 +116,7 @@ class TestInteractionPushWebhook:
         assert response.json() == {"enqueued": True}
 
         rows = await _outbox_rows_for_idempotency_key(
-            db_session, "push-interaction:session-1:request-1"
+            db_session, f"push-interaction:{cloud_sandbox_id}:session-1:request-1"
         )
         assert len(rows) == 1
         row = rows[0]
@@ -134,7 +137,7 @@ class TestInteractionPushWebhook:
         db_session: AsyncSession,
     ) -> None:
         owner_user_id = await _create_owner(db_session, email="push-webhook-duplicate@example.com")
-        token = await _provision_cloud_sandbox_worker_token(
+        token, cloud_sandbox_id = await _provision_cloud_sandbox_worker_token(
             db_session, owner_user_id=owner_user_id
         )
         payload = {
@@ -155,9 +158,70 @@ class TestInteractionPushWebhook:
         assert second.json() == {"enqueued": False}
 
         rows = await _outbox_rows_for_idempotency_key(
-            db_session, "push-interaction:session-2:request-2"
+            db_session, f"push-interaction:{cloud_sandbox_id}:session-2:request-2"
         )
         assert len(rows) == 1
+
+    async def test_same_session_and_request_across_different_sandboxes_both_enqueue(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        # Fix 2 regression: the dedupe key must be scoped to the resolved
+        # sandbox identity, not just the body-supplied (session_id,
+        # request_id) pair. Two different sandboxes that happen to report
+        # the identical pair must each get their own push — one sandbox must
+        # never be able to pre-claim the other's slot. (A single owner can
+        # have at most one active personal sandbox, so this needs two
+        # owners; that's incidental to what's under test here, which is the
+        # sandbox scoping, not the owner scoping — see the dedicated
+        # two-owner authz test for that.)
+        owner_a = await _create_owner(db_session, email="push-webhook-cross-sandbox-a@example.com")
+        owner_b = await _create_owner(db_session, email="push-webhook-cross-sandbox-b@example.com")
+        token_a, sandbox_a = await _provision_cloud_sandbox_worker_token(
+            db_session, owner_user_id=owner_a
+        )
+        token_b, sandbox_b = await _provision_cloud_sandbox_worker_token(
+            db_session, owner_user_id=owner_b
+        )
+        assert sandbox_a != sandbox_b
+
+        response_a = await client.post(
+            WEBHOOK_PATH,
+            json={
+                "sandboxToken": token_a,
+                "workspaceId": "workspace-2b",
+                "sessionId": "shared-session",
+                "requestId": "shared-request",
+                "kind": "user_input",
+                "title": "Need input A",
+            },
+        )
+        response_b = await client.post(
+            WEBHOOK_PATH,
+            json={
+                "sandboxToken": token_b,
+                "workspaceId": "workspace-2b",
+                "sessionId": "shared-session",
+                "requestId": "shared-request",
+                "kind": "user_input",
+                "title": "Need input B",
+            },
+        )
+
+        assert response_a.status_code == 200
+        assert response_a.json() == {"enqueued": True}
+        assert response_b.status_code == 200
+        assert response_b.json() == {"enqueued": True}
+
+        rows_a = await _outbox_rows_for_idempotency_key(
+            db_session, f"push-interaction:{sandbox_a}:shared-session:shared-request"
+        )
+        rows_b = await _outbox_rows_for_idempotency_key(
+            db_session, f"push-interaction:{sandbox_b}:shared-session:shared-request"
+        )
+        assert len(rows_a) == 1
+        assert len(rows_b) == 1
 
     async def test_bad_token_is_unauthorized(self, client: AsyncClient) -> None:
         response = await client.post(
@@ -179,7 +243,7 @@ class TestInteractionPushWebhook:
         db_session: AsyncSession,
     ) -> None:
         owner_user_id = await _create_owner(db_session, email="push-webhook-revoked@example.com")
-        token = await _provision_cloud_sandbox_worker_token(
+        token, _cloud_sandbox_id = await _provision_cloud_sandbox_worker_token(
             db_session, owner_user_id=owner_user_id
         )
 
@@ -217,7 +281,7 @@ class TestInteractionPushWebhook:
         # The webhook body carries no owner/user field at all: owner resolution
         # must come entirely from the sandbox token, never from client input.
         owner_user_id = await _create_owner(db_session, email="push-webhook-owner-2@example.com")
-        token = await _provision_cloud_sandbox_worker_token(
+        token, cloud_sandbox_id = await _provision_cloud_sandbox_worker_token(
             db_session, owner_user_id=owner_user_id
         )
 
@@ -235,7 +299,7 @@ class TestInteractionPushWebhook:
         assert response.status_code == 200
 
         rows = await _outbox_rows_for_idempotency_key(
-            db_session, "push-interaction:session-5:request-5"
+            db_session, f"push-interaction:{cloud_sandbox_id}:session-5:request-5"
         )
         assert rows[0].kwargs_json["user_id"] == owner_user_id
 
@@ -245,7 +309,7 @@ class TestInteractionPushWebhook:
         db_session: AsyncSession,
     ) -> None:
         owner_user_id = await _create_owner(db_session, email="push-webhook-bad-kind@example.com")
-        token = await _provision_cloud_sandbox_worker_token(
+        token, _cloud_sandbox_id = await _provision_cloud_sandbox_worker_token(
             db_session, owner_user_id=owner_user_id
         )
 

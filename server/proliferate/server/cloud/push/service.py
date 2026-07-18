@@ -42,7 +42,12 @@ async def handle_interaction_webhook(
     claim = await claim_webhook_event(
         db,
         provider=PUSH_INTERACTION_RECEIPT_PROVIDER,
-        event_id=f"{body.session_id}:{body.request_id}",
+        # Scoped to the resolved sandbox identity (never body-supplied), not
+        # just the body-supplied (session_id, request_id) pair: those IDs are
+        # server-generated UUIDs the caller controls, so an unscoped key would
+        # let a worker for one sandbox pre-claim another sandbox's
+        # (session, request) slot and silently suppress its real push.
+        event_id=f"{worker.cloud_sandbox_id}:{body.session_id}:{body.request_id}",
         event_type=body.kind,
         external_sandbox_id=(
             str(worker.cloud_sandbox_id) if worker.cloud_sandbox_id is not None else None
@@ -66,7 +71,14 @@ async def handle_interaction_webhook(
             "kind": body.kind,
             "title": body.title,
         },
-        idempotency_key=f"push-interaction:{body.session_id}:{body.request_id}",
+        # Same sandbox-scoping as the claim's event_id above: the outbox
+        # idempotency_key is a second, independent dedupe layer (a global
+        # unique constraint) guarding the same operation, so it needs the
+        # same fix or the claim-layer fix alone wouldn't actually close the
+        # cross-tenant pre-claim gap.
+        idempotency_key=(
+            f"push-interaction:{worker.cloud_sandbox_id}:{body.session_id}:{body.request_id}"
+        ),
     )
     await mark_webhook_event_processed(db, receipt_id=claim.receipt.id)
     return PushInteractionWebhookResponse(enqueued=True)
