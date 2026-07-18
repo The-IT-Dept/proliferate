@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { AnyHarnessRequestOptions } from "@anyharness/sdk";
 import { useQuery } from "@tanstack/react-query";
 import type { WorkspaceCollections } from "#product/lib/domain/workspaces/cloud/collections";
@@ -6,6 +7,7 @@ import {
   workspaceCollectionsNeedActivityRefresh,
 } from "#product/lib/domain/workspaces/cloud/collections";
 import { useCloudAvailabilityState } from "#product/hooks/cloud/derived/use-cloud-availability-state";
+import { useCloudVisibleWorkspaces } from "#product/hooks/access/cloud/workspaces/use-cloud-visible-workspaces";
 import { useWorkspaceCollectionsCache } from "#product/hooks/workspaces/cache/use-workspace-collections-cache";
 import { useProductAuthUserId } from "#product/hooks/auth/facade/use-product-auth";
 import { useHarnessConnectionStore } from "#product/stores/sessions/harness-connection-store";
@@ -102,7 +104,16 @@ export function useWorkspaces(options?: UseWorkspacesOptions) {
     queryKey,
   } = useWorkspaceCollectionsCache({ authUserId, cloudActive, runtimeUrl });
 
-  return useQuery<WorkspaceCollections>({
+  // Cloud workspaces must load independently of a local AnyHarness runtime. The
+  // collections query below is disabled without a runtimeUrl (the Web app has
+  // none) and its cache key includes runtimeUrl, so cloud workspaces — which
+  // otherwise only enter that cache via optimistic create + carry-forward —
+  // vanish on any screen with no connected sandbox (e.g. the home/Repositories
+  // view, where runtimeUrl is empty). Source them from the dedicated,
+  // cloudActive-gated cloud list and merge them in so they survive regardless.
+  const cloudWorkspacesQuery = useCloudVisibleWorkspaces(options?.enabled ?? true);
+
+  const collectionsQuery = useQuery<WorkspaceCollections>({
     queryKey,
     queryFn: async ({ signal }) => {
       if (!hasLocalRuntime) {
@@ -231,4 +242,22 @@ export function useWorkspaces(options?: UseWorkspacesOptions) {
         ? WORKSPACE_COLLECTIONS_STALE_MS
         : false,
   });
+
+  const data = useMemo<WorkspaceCollections | undefined>(() => {
+    const base = collectionsQuery.data;
+    // The cloud list defaults to [] before it resolves; only override once it
+    // has actually loaded (dataUpdatedAt > 0), so a mid-load empty result never
+    // blanks out cloud workspaces the collections cache already holds.
+    const cloudLoaded = cloudWorkspacesQuery.dataUpdatedAt > 0;
+    if (!cloudLoaded) {
+      return base;
+    }
+    const cloudWorkspaces = cloudWorkspacesQuery.data;
+    if (base === undefined) {
+      return buildWorkspaceCollections([], [], cloudWorkspaces);
+    }
+    return { ...base, cloudWorkspaces };
+  }, [collectionsQuery.data, cloudWorkspacesQuery.data, cloudWorkspacesQuery.dataUpdatedAt]);
+
+  return { ...collectionsQuery, data };
 }

@@ -21,6 +21,10 @@ const mocks = vi.hoisted(() => {
 
   return {
     cloudActive: false,
+    // Controls the dedicated cloud-workspace list that useWorkspaces merges in.
+    // dataUpdatedAt: 0 models "not loaded yet" (the merge must fall back to the
+    // collections cache), > 0 models a resolved list.
+    cloudVisible: { data: [] as CloudWorkspaceSummary[], dataUpdatedAt: 0 },
     listCloudWorkspaces,
     repoRootsList,
     workspacesList,
@@ -42,10 +46,15 @@ vi.mock("@proliferate/cloud-sdk/client/workspaces", () => ({
   listCloudWorkspaces: mocks.listCloudWorkspaces,
 }));
 
+vi.mock("#product/hooks/access/cloud/workspaces/use-cloud-visible-workspaces", () => ({
+  useCloudVisibleWorkspaces: () => mocks.cloudVisible,
+}));
+
 describe("useWorkspaces", () => {
 
   beforeEach(() => {
     mocks.cloudActive = false;
+    mocks.cloudVisible = { data: [], dataUpdatedAt: 0 };
     useHarnessConnectionStore.setState({
       runtimeUrl: "http://runtime.test",
       connectionState: "healthy",
@@ -142,24 +151,41 @@ describe("useWorkspaces", () => {
     expect(result.current.isSuccess).toBe(false);
   });
 
-  it("keeps seeded cloud workspace data available without a local runtime", () => {
+  it("surfaces cloud workspaces from the cloud list without a local runtime", () => {
+    // The collections query is disabled without a runtimeUrl, so cloud
+    // workspaces must come from the dedicated cloud list merged in by
+    // useWorkspaces — otherwise the sidebar renders empty on the home screen.
     mocks.cloudActive = true;
+    mocks.cloudVisible = { data: [makeCloudWorkspace()], dataUpdatedAt: 1 };
     useHarnessConnectionStore.setState({
       runtimeUrl: "",
       connectionState: "connecting",
       error: null,
     });
+
+    const { result } = renderUseWorkspaces();
+
+    expect(mocks.workspacesList).not.toHaveBeenCalled();
+    expect(mocks.repoRootsList).not.toHaveBeenCalled();
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(result.current.data?.cloudWorkspaces.map((workspace) => workspace.id)).toEqual([
+      "cloud-1",
+    ]);
+  });
+
+  it("does not blank cached cloud workspaces before the cloud list resolves", () => {
+    // While the cloud list is still loading (dataUpdatedAt 0, data []), the
+    // collections cache's cloud workspaces must be preserved, not overwritten.
+    mocks.cloudActive = true;
+    mocks.cloudVisible = { data: [], dataUpdatedAt: 0 };
     const queryClient = createQueryClient();
     queryClient.setQueryData(
-      workspaceCollectionsKey("", true, null),
+      workspaceCollectionsKey("http://runtime.test", true, null),
       buildWorkspaceCollections([], [], [makeCloudWorkspace()]),
     );
 
     const { result } = renderUseWorkspaces(queryClient);
 
-    expect(mocks.workspacesList).not.toHaveBeenCalled();
-    expect(mocks.repoRootsList).not.toHaveBeenCalled();
-    expect(result.current.fetchStatus).toBe("idle");
     expect(result.current.data?.cloudWorkspaces.map((workspace) => workspace.id)).toEqual([
       "cloud-1",
     ]);
