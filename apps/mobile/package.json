@@ -11,10 +11,10 @@
     "web": "pnpm build:shared && expo start --web",
     "web:profile": "pnpm build:shared && expo start --web --host localhost --port ${PROLIFERATE_MOBILE_WEB_PORT:-5175}",
     "typecheck": "pnpm build:shared && tsc --noEmit",
-    "build:ios": "pnpm build:shared && pnpm dlx eas-cli@18.13.0 build --platform ios --profile production",
-    "build:ios:preview": "pnpm build:shared && pnpm dlx eas-cli@18.13.0 build --platform ios --profile preview",
+    "build:ios": "pnpm build:shared && pnpm dlx eas-cli@21.0.2 build --platform ios --profile production",
+    "build:ios:preview": "pnpm build:shared && pnpm dlx eas-cli@21.0.2 build --platform ios --profile preview",
     "eas-build-post-install": "pnpm build:shared",
-    "submit:ios": "pnpm dlx eas-cli@18.13.0 submit --platform ios --profile production"
+    "submit:ios": "pnpm dlx eas-cli@21.0.2 submit --platform ios --profile production"
   },
   "dependencies": {
     "@anyharness/sdk": "workspace:*",
