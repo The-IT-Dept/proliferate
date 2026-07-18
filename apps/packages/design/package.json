@@ -15,6 +15,10 @@
       "types": "./dist/react-native.d.ts",
       "import": "./dist/react-native.js"
     },
+    "./glass": {
+      "types": "./dist/glass/index.d.ts",
+      "import": "./dist/glass/index.js"
+    },
     "./theme.css": "./dist/theme.css",
     "./dom.css": "./dist/css/dom.css",
     "./product.css": "./dist/css/product.css",
@@ -22,7 +26,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/generate-theme.mjs && node scripts/copy-dom-css.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
@@ -30,7 +35,19 @@
     "@fontsource-variable/space-grotesk": "^5.2.10",
     "tailwindcss": "^4"
   },
+  "peerDependencies": {
+    "expo-blur": "*",
+    "expo-glass-effect": "*",
+    "react": "^19",
+    "react-native": "^0.85"
+  },
   "devDependencies": {
-    "typescript": "^5.7"
+    "@types/react": "~19.2.17",
+    "expo-blur": "^56.0.4",
+    "expo-glass-effect": "~56.0.4",
+    "react": "19.2.7",
+    "react-native": "0.85.3",
+    "typescript": "^5.7",
+    "vitest": "^3.2.7"
   }
 }
