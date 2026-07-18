@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheetScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlayStrong,
   },
   sheet: {

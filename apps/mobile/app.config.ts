@@ -18,11 +18,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // New Architecture (Fabric) is mandatory and always-on as of SDK 55; the
   // `newArchEnabled` opt-in config key was removed.
   assetBundlePatterns: ["**/*"],
-  splash: {
-    image: "./assets/splash-icon.png",
-    resizeMode: "contain",
-    backgroundColor: "#181818",
-  },
+  // The top-level `splash` config was removed in SDK 56; splash configuration
+  // now lives entirely in the `expo-splash-screen` plugin below.
   ios: {
     bundleIdentifier: BUNDLE_ID,
     buildNumber: "29",
@@ -68,6 +65,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         backgroundColor: "#181818",
         image: "./assets/splash-icon.png",
         imageWidth: 160,
+        resizeMode: "contain",
         dark: { backgroundColor: "#181818", image: "./assets/splash-icon.png" },
       },
     ],

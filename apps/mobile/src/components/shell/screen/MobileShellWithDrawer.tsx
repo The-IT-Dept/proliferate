@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     zIndex: 4,
   },
   contentScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#000000",
     zIndex: 5,
   },

@@ -17,6 +17,13 @@ packages:
   - "tests/intent"
   - "tests/release"
 
+overrides:
+  # Pin the Expo DOM WebView to the SDK 56 line. The SDK 54->56 upgrade left this
+  # optional peer of @expo/log-box at the SDK 55 version (55.0.6), which no longer
+  # satisfies @expo/log-box's ^56.0.6 peer range and forked a duplicate expo@56
+  # install (flagged by expo-doctor's duplicate-native-module check).
+  "@expo/dom-webview": "56.0.6"
+
 allowBuilds:
   "@sentry/cli": true
   core-js: true

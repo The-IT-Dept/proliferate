@@ -23,25 +23,25 @@
     "@proliferate/design": "workspace:*",
     "@proliferate/product-domain": "workspace:*",
     "@tanstack/react-query": "^5.101.2",
-    "expo": "~55.0.28",
-    "expo-apple-authentication": "~55.0.15",
-    "expo-application": "~55.0.17",
-    "expo-blur": "^55.0.16",
-    "expo-clipboard": "~55.0.15",
-    "expo-crypto": "~55.0.17",
-    "expo-device": "~55.0.19",
-    "expo-file-system": "~55.0.24",
-    "expo-linking": "~55.0.16",
-    "expo-localization": "~55.0.17",
-    "expo-secure-store": "~55.0.16",
-    "expo-splash-screen": "~55.0.23",
-    "expo-status-bar": "~55.0.6",
+    "expo": "~56.0.16",
+    "expo-apple-authentication": "~56.0.4",
+    "expo-application": "~56.0.3",
+    "expo-blur": "^56.0.4",
+    "expo-clipboard": "~56.0.4",
+    "expo-crypto": "~56.0.4",
+    "expo-device": "~56.0.4",
+    "expo-file-system": "~56.0.8",
+    "expo-linking": "~56.0.15",
+    "expo-localization": "~56.0.6",
+    "expo-secure-store": "~56.0.4",
+    "expo-splash-screen": "~56.0.13",
+    "expo-status-bar": "~56.0.4",
     "posthog-react-native": "^4.56.3",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "react-native": "0.83.6",
-    "react-native-safe-area-context": "~5.6.2",
-    "react-native-svg": "15.15.3",
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-svg": "15.15.4",
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
@@ -51,11 +51,12 @@
   },
   "expo": {
     "install": {
-      "//": "The React family is intentionally held at 19.2 across the SDK upgrade (react-native 0.85 peers react ^19.2.0); opt it out of SDK version-matching so `expo install --fix` and expo-doctor do not try to realign it.",
+      "//": "Held out of SDK version-matching so `expo install --fix`/expo-doctor don't realign them. The React family stays at 19.2 (react-native 0.85 peers react ^19.2.0). TypeScript stays at the monorepo-wide ^5.7 (=5.9.x): SDK 56 prefers TS 6.0, but the shared @proliferate/* packages built during `mobile typecheck` still use tsconfig `baseUrl` (removed in TS 6/7), so the workspace moves to TS 6 as one migration, not here.",
       "exclude": [
         "react",
         "react-dom",
-        "@types/react"
+        "@types/react",
+        "typescript"
       ]
     }
   }

@@ -134,11 +134,11 @@ export function MobileChatToolDetailSheet({
 
 const styles = StyleSheet.create({
   toolSheetLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: "flex-end",
   },
   toolSheetScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.overlayStrong,
   },
   toolSheet: {
