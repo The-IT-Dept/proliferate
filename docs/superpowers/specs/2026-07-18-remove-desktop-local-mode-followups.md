@@ -90,3 +90,68 @@ pipeline still builds:
 - `tests/release` + `tests/intent` typecheck/lint green.
 - Confirm no workflow references `apps/desktop`, `release-desktop`, `_deploy-desktop`,
   `DESKTOP_VERSION`, or `MIN_DESKTOP_VERSION`.
+
+---
+
+# Phase 2 status + Phase 2/3 coupling finding
+
+## Done in this pass (green, committed)
+- **Parked local-desktop automation executor deleted**: `server/proliferate/server/automations/local_executor.py`,
+  its parked API routes (`/automations/executor/local/*`), the `Local*` request/response
+  models, and `local_claim_payload`. The automations router is unmounted (parked in
+  `main.py`), so this touched no live path, no web client, and no OpenAPI schema.
+  Verified: ruff clean, `main` imports, 41 automations unit tests pass.
+  (Note: `automations/models.py`/`api.py` have a *pre-existing* broken transitive import
+  `proliferate.db.models.cloud.repo_config` — unrelated to this change; the parked
+  subsystem's tests import `automations.domain.*`, not `.models`.)
+
+## KEY FINDING: Phase 2 (server) is coupled to Phase 3 (web) — sequence them together
+
+The spec treats Phase 2 (server local-execution removal) and Phase 3 (web local surface)
+as separable. In practice the discriminator-enum and response-shape parts of Phase 2 are
+**tightly coupled** to the Phase 3 web client through the generated SDK
+(`cloud/sdk/src/generated/openapi.ts`):
+
+- Server response models (`WorkspaceMaterializationSummary.targetKind`/`desktopInstallId`,
+  `RepoEnvironmentResponse.kind`/`localPath`/`desktopInstallId`, worker kinds) are mirrored
+  into the generated SDK and **read by the web client**. Removing a field or an enum literal
+  (`local_desktop`, `local`, `desktop`) from the server changes the generated TypeScript, and
+  the web client has extensive readers/comparators (`surface === "local"`, `environmentKind
+  === "local"`, `RepoGroupEnvironmentKind`, `add-repo-flow-store` `kind:"local"`, harness
+  `surface="local"`, etc. — all Phase 3). Those become TS errors → web typecheck goes red.
+- Dropping a DB **column** (e.g. `repo_environment.local_path`, `..._materialization.desktop_install_id`)
+  forces removing it from the SQLAlchemy model → store Value → response payload → SDK →
+  web reader — i.e. it *is* Phase 3 work.
+
+**Implication for the remaining plan:** split Phase 2 into
+1. **Web-decoupled server-internal removals** (safe to land now, no web churn):
+   - the parked executor (DONE);
+   - the desktop-only **endpoints** the web never calls — local-materialization
+     `POST/PUT/DELETE /workspaces/{id}/materializations`, runtime-worker
+     `POST /workers/desktop/{enrollment,revoke}`, and the `auth/desktop/*` DELETE set
+     from the Phase 0 findings — plus the service/store functions only they reach;
+   - the DB **row-drop + CHECK-relax + local-partial-unique-index-drop** migrations that do
+     NOT drop columns (keep columns until step 2), verified with `alembic upgrade/downgrade`
+     on a throwaway Postgres (available locally on :5432 — never touch prod).
+   Caveat: verify each endpoint is truly not called by the web client / generated SDK before
+   removing (some request models may still be in the SDK even if unused).
+2. **Discriminator/response-shape/column removals** — do these **in lockstep with Phase 3**
+   web-client edits + one SDK regeneration, so typecheck stays green:
+   `MaterializationTargetKind` → `managed_cloud` only; `RepoEnvironmentKind` drop `local`;
+   drop `desktop_install_id`/`local_path`/`worktree_path` columns; collapse the runtime-worker
+   `runtime_kind` desktop arm's schema; the `auth` `{web,mobile,desktop}` surface switches
+   (keep shared constants `DESKTOP_REDIRECT_SCHEME(S)`, `DESKTOP_DEEP_LINK_LAUNCH_ENABLED`,
+   `GITHUB_OAUTH_SCOPES`, `SUPPORTED_CODE_CHALLENGE_METHODS` — used by github_app/integrations
+   and web/mobile login, NOT desktop-execution-only, per the map).
+
+The full per-file map for both steps is in the completed background exploration (materialization,
+runtime_workers, repositories, auth surface switches, DB constraints/indexes). Alembic head to
+branch new migrations from: **`775b33c8d1f5`**.
+
+## Phase 0 auth/desktop DELETE set — still to execute (web-safe; test-heavy)
+Delete `/auth/desktop/{password/login,authorize,github/authorize,github/callback,poll,token,
+refresh}` + `pages.py`; trim `service.py`/`models.py` to `github_oauth_enabled` +
+`AuthMethodsResponse`/`OAuthAvailabilityResponse`; KEEP `/methods` + `/github/availability`.
+Contingencies: repoint `auth/jwt.py` `BearerTransport(tokenUrl=...)` off `/auth/desktop/token`;
+migrate bearer-login fixtures (`tests/release/**`, `tests/intent/**`) to
+`/auth/mobile/password/login`; update/remove the ~8 desktop auth server test files.
