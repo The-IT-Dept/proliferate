@@ -16,7 +16,10 @@ import { useMobileCloudRepoReadiness } from "../../hooks/access/cloud/repositori
 import { useVisualViewportKeyboardInset } from "../../hooks/ui/keyboard/use-visual-viewport-keyboard-inset";
 import { useMobileWorkInventory } from "../../hooks/work/derived/use-mobile-work-inventory";
 import { formatMobileHomeDateEyebrow } from "../../lib/domain/home/mobile-home-date";
-import { deriveMobileHomeLaunchEnablement } from "../../lib/domain/home/mobile-home-launch-enablement";
+import {
+  deriveMobileHomeLaunchEnablement,
+  resolveMobileModelAvailabilityNotice,
+} from "../../lib/domain/home/mobile-home-launch-enablement";
 import { summarizeMobileHomeLaunchConfig } from "../../lib/domain/home/mobile-home-config-summary";
 import type { MobileCloudChat } from "../../navigation/navigation-model";
 import { MobileIcon } from "../primitives/MobileIcon";
@@ -32,6 +35,13 @@ interface MobileHomeScreenProps {
   ownerUserId: string | null;
   onOpenChat: (chat: MobileCloudChat) => void;
   onConfigureRepos: () => void;
+  /**
+   * The "Agents" affordance on the model-availability notice (web parity —
+   * `HomeNextScreen`'s `handleHomeAction("agent-settings")`). No dedicated
+   * agent-setup/harness screen exists on mobile yet, so this navigates to
+   * the Settings tab — the same target `onConfigureRepos` already uses.
+   */
+  onOpenAgents: () => void;
 }
 
 type HomeSheet = "repo" | "branch" | "config" | null;
@@ -43,6 +53,7 @@ export function MobileHomeScreen({
   ownerUserId,
   onOpenChat,
   onConfigureRepos,
+  onOpenAgents,
 }: MobileHomeScreenProps) {
   const keyboardInset = useVisualViewportKeyboardInset();
   const insets = useSafeAreaInsets();
@@ -106,9 +117,15 @@ export function MobileHomeScreen({
     branchOptionsCount: launchModel.branchOptions.length,
     selectedBaseBranch: launchModel.selectedBaseBranch,
     readinessBlockedReason,
-    harnessUnavailableReason: launchModel.harnessAvailability.message,
+    modelAvailabilityState: launchModel.modelAvailabilityState,
     submitting: launchActions.submitting,
   });
+  // The web-verbatim model-availability notice (HomeNextScreen's
+  // `modelAvailabilityNotice`) — a separate persistent banner, shown
+  // regardless of draft text, never folded into `launchEnablement.disabledReason`.
+  const modelAvailabilityNotice = resolveMobileModelAvailabilityNotice(
+    launchModel.modelAvailabilityState,
+  );
   const dateEyebrow = formatMobileHomeDateEyebrow(new Date());
   const heroRepoName = launchModel.selectedRepo?.gitRepoName ?? null;
 
@@ -190,20 +207,29 @@ export function MobileHomeScreen({
           }}
         />
 
-        {launchActions.status
-          || launchActions.error
-          || launchEnablement.disabledReason
-          || launchModel.harnessAvailability.message ? (
-            <Text style={[styles.launchNote, launchActions.error && styles.launchError]}>
-              {launchActions.error
-                ?? launchActions.status
-                ?? launchEnablement.disabledReason
-                // Model/harness availability (web: modelAvailabilityNotice) is a
-                // persistent notice — shown regardless of draft text, unlike the
-                // repo/branch target reason above it.
-                ?? launchModel.harnessAvailability.message}
-            </Text>
-          ) : null}
+        {launchActions.status || launchActions.error || launchEnablement.disabledReason ? (
+          <Text style={[styles.launchNote, launchActions.error && styles.launchError]}>
+            {launchActions.error ?? launchActions.status ?? launchEnablement.disabledReason}
+          </Text>
+        ) : null}
+
+        {modelAvailabilityNotice ? (
+          <View style={styles.availabilityNotice}>
+            <Text style={styles.availabilityNoticeText}>{modelAvailabilityNotice.text}</Text>
+            {modelAvailabilityNotice.actionLabel ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={modelAvailabilityNotice.actionLabel}
+                onPress={onOpenAgents}
+                hitSlop={8}
+              >
+                <Text style={styles.availabilityNoticeAction}>
+                  {modelAvailabilityNotice.actionLabel}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
 
         <MobileHomeRecentSection items={recentItems} onOpenChat={onOpenChat} />
       </ScrollView>
@@ -323,6 +349,28 @@ const styles = StyleSheet.create({
   },
   launchError: {
     color: colors.destructive,
+  },
+  availabilityNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: spacing[1],
+    marginTop: spacing[1],
+    paddingHorizontal: spacing[2],
+  },
+  availabilityNoticeText: {
+    color: colors.faint,
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: "center",
+  },
+  availabilityNoticeAction: {
+    color: colors.fg,
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontWeight: "600",
+    textDecorationLine: "underline",
   },
   pressed: {
     opacity: 0.7,

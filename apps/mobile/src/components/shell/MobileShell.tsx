@@ -143,6 +143,7 @@ export function MobileShell() {
                   ownerUserId={ownerUserId}
                   onOpenChat={nav.openChat}
                   onConfigureRepos={() => nav.navigate("settings")}
+                  onOpenAgents={() => nav.navigate("settings")}
                 />
               ) : nav.route === "work" ? (
                 <MobileWorkspacesScreen

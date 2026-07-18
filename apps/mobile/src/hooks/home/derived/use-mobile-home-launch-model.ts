@@ -21,6 +21,10 @@ import {
   buildMobileRuntimeOptions,
   resolveMobileSelectedBaseBranch,
 } from "../../../lib/domain/home/mobile-home-launch";
+import {
+  resolveMobileModelAvailabilityState,
+  type MobileModelAvailabilityState,
+} from "../../../lib/domain/home/mobile-home-launch-enablement";
 
 export function useMobileHomeLaunchModel() {
   const [repoId, setRepoId] = useState("");
@@ -87,6 +91,20 @@ export function useMobileHomeLaunchModel() {
     catalogAgentKindsKey,
   ]);
   const launchableAgentKinds = harnessAvailability.launchableAgentKinds;
+  // Mirrors web's `modelAvailabilityState` (product-client
+  // `use-home-next-model-selection.ts` → `resolveHomeModelAvailabilityState`):
+  // an in-flight/undefined catalog must resolve to "loading", not silently
+  // fall through `resolveCloudHarnessAvailability`'s "no kinds listed yet ⇒
+  // treat everything as launchable" default — that default exists for the
+  // *allowed*-kinds case, not for "the catalog hasn't loaded".
+  const modelAvailabilityState: MobileModelAvailabilityState = useMemo(
+    () => resolveMobileModelAvailabilityState({
+      isLoading: agentCatalog.isLoading,
+      hasLoadError: agentCatalog.isError,
+      hasLaunchableModel: launchableAgentKinds.length > 0,
+    }),
+    [agentCatalog.isLoading, agentCatalog.isError, launchableAgentKinds],
+  );
   const resolvedLaunchSelection = useMemo(
     () => resolveCloudLaunchSelection({
       catalog: agentCatalog.data,
@@ -140,8 +158,8 @@ export function useMobileHomeLaunchModel() {
 
   return {
     agentCatalog,
-    harnessAvailability,
     launchableAgentKinds,
+    modelAvailabilityState,
     launchComposerControls,
     branchOptions,
     repoBranches,

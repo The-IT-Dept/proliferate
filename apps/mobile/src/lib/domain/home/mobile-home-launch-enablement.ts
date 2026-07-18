@@ -49,6 +49,64 @@ export function resolveMobileHomeTargetDisabledReason(
   return null;
 }
 
+export type MobileModelAvailabilityState =
+  | "loading"
+  | "load_error"
+  | "no_launchable_model"
+  | "launchable";
+
+/**
+ * Mirrors web's `resolveHomeModelAvailabilityState` (product-client
+ * `home-next-launch.ts`) verbatim — the state machine that decides whether
+ * the agent/model catalog is launchable, still loading, failed to load, or
+ * loaded with nothing launchable. A launchable model always wins even while
+ * a refetch is in flight; otherwise loading takes priority over a stale
+ * error so a background refetch doesn't flash the error copy.
+ */
+export function resolveMobileModelAvailabilityState(input: {
+  isLoading: boolean;
+  hasLoadError: boolean;
+  hasLaunchableModel: boolean;
+}): MobileModelAvailabilityState {
+  if (input.hasLaunchableModel) {
+    return "launchable";
+  }
+  if (input.isLoading) {
+    return "loading";
+  }
+  if (input.hasLoadError) {
+    return "load_error";
+  }
+  return "no_launchable_model";
+}
+
+export interface MobileModelAvailabilityNotice {
+  text: string;
+  actionLabel: "Agents" | null;
+}
+
+/**
+ * Maps a `MobileModelAvailabilityState` to the web-verbatim notice copy
+ * (product-client `HomeNextScreen.tsx`'s `modelAvailabilityNotice`) — the
+ * exact strings, copied verbatim, never invented locally:
+ *   - `no_launchable_model` → "Finish agent setup to start a chat." + an
+ *     "Agents" navigation affordance.
+ *   - `load_error` → "Models are unavailable right now. Try again in a
+ *     moment.", no affordance.
+ *   - `loading` / `launchable` → no notice.
+ */
+export function resolveMobileModelAvailabilityNotice(
+  state: MobileModelAvailabilityState,
+): MobileModelAvailabilityNotice | null {
+  if (state === "no_launchable_model") {
+    return { text: "Finish agent setup to start a chat.", actionLabel: "Agents" };
+  }
+  if (state === "load_error") {
+    return { text: "Models are unavailable right now. Try again in a moment.", actionLabel: null };
+  }
+  return null;
+}
+
 export interface MobileHomeLaunchEnablementInput extends MobileHomeTargetReadinessInput {
   /** The composer's current draft text. */
   draft: string;
@@ -59,15 +117,17 @@ export interface MobileHomeLaunchEnablementInput extends MobileHomeTargetReadine
    */
   readinessBlockedReason: string | null;
   /**
-   * Resolved harness-availability message (`resolveCloudHarnessAvailability`),
-   * or null when at least one agent kind is launchable. Gates `canSubmit`
-   * like everything else here, but — matching the web composer, where this
-   * is `modelAvailabilityNotice`, a persistent banner wholly separate from
-   * `submitDisabledReason` — it is deliberately never surfaced through
-   * `disabledReason`. Callers show it unconditionally alongside this
-   * derivation's output, not gated on draft text.
+   * The agent/model catalog's availability state
+   * (`resolveMobileModelAvailabilityState`). Gates `canSubmit` exactly like
+   * web's composer (`modelAvailabilityState === "launchable"`) — `loading`
+   * blocks submit just as much as `no_launchable_model` or `load_error`
+   * does. Deliberately never surfaced through `disabledReason`: matching the
+   * web composer, where this drives `modelAvailabilityNotice`, a persistent
+   * banner wholly separate from `submitDisabledReason`. Callers show the
+   * mapped notice (`resolveMobileModelAvailabilityNotice`) unconditionally
+   * alongside this derivation's output, not gated on draft text.
    */
-  harnessUnavailableReason: string | null;
+  modelAvailabilityState: MobileModelAvailabilityState;
   /** A create-cloud-workspace mutation is already in flight. */
   submitting: boolean;
 }
@@ -78,8 +138,9 @@ export interface MobileHomeLaunchEnablement {
    * The repo/branch/readiness reason submit is disabled, for display next to
    * the composer — null whenever the draft itself is empty (an empty draft
    * needs no explanation, matching the web composer's `submitDisabledReason`),
-   * when submit is actually enabled, or when the only blocker is harness
-   * availability (see `harnessUnavailableReason` — shown separately).
+   * when submit is actually enabled, or when the only blocker is model
+   * availability (see `modelAvailabilityState` — shown separately via
+   * `resolveMobileModelAvailabilityNotice`).
    */
   disabledReason: string | null;
 }
@@ -100,7 +161,7 @@ export function deriveMobileHomeLaunchEnablement(
   return {
     canSubmit: hasDraft
       && targetOrReadinessReason === null
-      && input.harnessUnavailableReason === null
+      && input.modelAvailabilityState === "launchable"
       && !input.submitting,
     disabledReason: hasDraft ? targetOrReadinessReason : null,
   };

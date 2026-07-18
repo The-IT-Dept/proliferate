@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveMobileHomeLaunchEnablement,
   resolveMobileHomeTargetDisabledReason,
+  resolveMobileModelAvailabilityNotice,
+  resolveMobileModelAvailabilityState,
   type MobileHomeLaunchEnablementInput,
 } from "./mobile-home-launch-enablement";
 
@@ -17,7 +19,7 @@ const baseTargetInput = {
 const baseInput: MobileHomeLaunchEnablementInput = {
   ...baseTargetInput,
   draft: "Add retry logic",
-  harnessUnavailableReason: null,
+  modelAvailabilityState: "launchable",
   readinessBlockedReason: null,
   submitting: false,
 };
@@ -68,6 +70,92 @@ describe("resolveMobileHomeTargetDisabledReason", () => {
   });
 });
 
+describe("resolveMobileModelAvailabilityState", () => {
+  it("is launchable once at least one model is launchable", () => {
+    expect(
+      resolveMobileModelAvailabilityState({
+        isLoading: false,
+        hasLoadError: false,
+        hasLaunchableModel: true,
+      }),
+    ).toBe("launchable");
+  });
+
+  it("stays launchable even while a background refetch is in flight", () => {
+    expect(
+      resolveMobileModelAvailabilityState({
+        isLoading: true,
+        hasLoadError: false,
+        hasLaunchableModel: true,
+      }),
+    ).toBe("launchable");
+  });
+
+  it("is loading while the catalog request is in flight and nothing is launchable yet", () => {
+    expect(
+      resolveMobileModelAvailabilityState({
+        isLoading: true,
+        hasLoadError: false,
+        hasLaunchableModel: false,
+      }),
+    ).toBe("loading");
+  });
+
+  it("prioritizes loading over a load error (avoids flashing the error during a refetch)", () => {
+    expect(
+      resolveMobileModelAvailabilityState({
+        isLoading: true,
+        hasLoadError: true,
+        hasLaunchableModel: false,
+      }),
+    ).toBe("loading");
+  });
+
+  it("is load_error once loading has finished and the catalog request failed", () => {
+    expect(
+      resolveMobileModelAvailabilityState({
+        isLoading: false,
+        hasLoadError: true,
+        hasLaunchableModel: false,
+      }),
+    ).toBe("load_error");
+  });
+
+  it("is no_launchable_model once loaded cleanly with nothing launchable", () => {
+    expect(
+      resolveMobileModelAvailabilityState({
+        isLoading: false,
+        hasLoadError: false,
+        hasLaunchableModel: false,
+      }),
+    ).toBe("no_launchable_model");
+  });
+});
+
+describe("resolveMobileModelAvailabilityNotice", () => {
+  it("maps no_launchable_model to the web-verbatim setup notice plus the Agents affordance", () => {
+    expect(resolveMobileModelAvailabilityNotice("no_launchable_model")).toEqual({
+      text: "Finish agent setup to start a chat.",
+      actionLabel: "Agents",
+    });
+  });
+
+  it("maps load_error to the web-verbatim transient-failure notice, with no affordance", () => {
+    expect(resolveMobileModelAvailabilityNotice("load_error")).toEqual({
+      text: "Models are unavailable right now. Try again in a moment.",
+      actionLabel: null,
+    });
+  });
+
+  it("shows no notice while loading", () => {
+    expect(resolveMobileModelAvailabilityNotice("loading")).toBeNull();
+  });
+
+  it("shows no notice once launchable", () => {
+    expect(resolveMobileModelAvailabilityNotice("launchable")).toBeNull();
+  });
+});
+
 describe("deriveMobileHomeLaunchEnablement", () => {
   it("can submit once the draft is non-empty and the repo/branch target is fully resolved", () => {
     expect(deriveMobileHomeLaunchEnablement(baseInput)).toEqual({
@@ -113,12 +201,12 @@ describe("deriveMobileHomeLaunchEnablement", () => {
     });
   });
 
-  it("still surfaces the target reason when harness is also unavailable", () => {
+  it("still surfaces the target reason when the model catalog is also unavailable", () => {
     expect(
       deriveMobileHomeLaunchEnablement({
         ...baseInput,
         selectedBaseBranch: null,
-        harnessUnavailableReason: "Models are unavailable right now. Try again in a moment.",
+        modelAvailabilityState: "load_error",
       }),
     ).toEqual({
       canSubmit: false,
@@ -127,14 +215,45 @@ describe("deriveMobileHomeLaunchEnablement", () => {
   });
 
   it(
-    "blocks canSubmit on harness unavailability once repo/branch/readiness are resolved, " +
-      "but leaves disabledReason null — the harness message is its own persistent notice " +
-      "on web (modelAvailabilityNotice), never folded into the draft-gated target reason",
+    "blocks canSubmit once the catalog resolves to no_launchable_model, but leaves " +
+      "disabledReason null — the mapped notice is its own persistent banner on web " +
+      "(modelAvailabilityNotice), never folded into the draft-gated target reason",
     () => {
       expect(
         deriveMobileHomeLaunchEnablement({
           ...baseInput,
-          harnessUnavailableReason: "Models are unavailable right now. Try again in a moment.",
+          modelAvailabilityState: "no_launchable_model",
+        }),
+      ).toEqual({
+        canSubmit: false,
+        disabledReason: null,
+      });
+    },
+  );
+
+  it(
+    "blocks canSubmit once the catalog resolves to load_error, but leaves disabledReason null",
+    () => {
+      expect(
+        deriveMobileHomeLaunchEnablement({
+          ...baseInput,
+          modelAvailabilityState: "load_error",
+        }),
+      ).toEqual({
+        canSubmit: false,
+        disabledReason: null,
+      });
+    },
+  );
+
+  it(
+    "blocks canSubmit while the catalog is still loading — mobile must not treat an " +
+      "in-flight/undefined catalog as all-launchable",
+    () => {
+      expect(
+        deriveMobileHomeLaunchEnablement({
+          ...baseInput,
+          modelAvailabilityState: "loading",
         }),
       ).toEqual({
         canSubmit: false,
