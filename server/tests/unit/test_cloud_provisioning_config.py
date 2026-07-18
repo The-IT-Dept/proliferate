@@ -234,3 +234,62 @@ def test_managed_cloud_e2b_absent_stays_disabled() -> None:
 
     assert caps.managedCloud.status == "disabled"
     assert caps.managedCloud.repositoryAuthority is None
+
+
+# --- Unknown sandbox_provider is rejected, not silently E2B (CQ-1) ----------
+#
+# Regression: any sandbox_provider other than "kubernetes" used to fall through
+# to the E2B logic, so an operator typo (SANDBOX_PROVIDER=bogus) on a box that
+# also has full E2B env would read as configured with no error -- only to raise
+# inside get_sandbox_provider() at first real provision. The readiness layer
+# must recognize an unknown provider value up front and report it as a named,
+# actionable configuration error, independent of what E2B env happens to be set.
+
+
+def test_unknown_provider_is_not_configured_even_with_full_e2b_env() -> None:
+    settings = _settings(
+        debug=False,
+        e2b_api_key="e2b_key",
+        e2b_template_name="tmpl",
+        SANDBOX_PROVIDER="bogus",
+    )
+    assert settings.sandbox_provider == "bogus"
+    assert settings.sandbox_provisioning_configured is False
+    assert settings.sandbox_provisioning_partially_configured is False
+    error = settings.sandbox_provisioning_config_error
+    assert error is not None
+    assert "bogus" in error
+
+
+def test_unknown_provider_is_not_configured_without_e2b_env() -> None:
+    settings = _settings(
+        debug=False,
+        e2b_api_key="",
+        e2b_template_name="",
+        SANDBOX_PROVIDER="bogus",
+    )
+    assert settings.sandbox_provider == "bogus"
+    assert settings.sandbox_provisioning_configured is False
+    assert settings.sandbox_provisioning_partially_configured is False
+    error = settings.sandbox_provisioning_config_error
+    assert error is not None
+    assert "bogus" in error
+
+
+def test_known_providers_are_unaffected_by_the_unknown_provider_check() -> None:
+    e2b_ready = _settings(debug=False, e2b_api_key="e2b_key", e2b_template_name="tmpl")
+    assert e2b_ready.sandbox_provisioning_configured is True
+    assert e2b_ready.sandbox_provisioning_config_error is None
+
+    kubernetes_ready = _settings(debug=False, SANDBOX_PROVIDER="kubernetes")
+    assert kubernetes_ready.sandbox_provisioning_configured is True
+    assert kubernetes_ready.sandbox_provisioning_partially_configured is False
+    assert kubernetes_ready.sandbox_provisioning_config_error is None
+
+
+def test_managed_cloud_unknown_provider_is_not_ready() -> None:
+    config = _capability_settings(sandbox_provider="bogus", **_APP_COMPLETE)
+
+    caps = build_server_capabilities(config)
+
+    assert caps.managedCloud.status != "ready"

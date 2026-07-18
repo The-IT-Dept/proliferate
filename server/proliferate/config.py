@@ -3,6 +3,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from proliferate.config_defaults import DEFAULT_CORS_ALLOW_ORIGINS, ENV_FILES, SAFE_IDENTITY_CHARS
 
+# Recognized values for `Settings.sandbox_provider`. Duplicated here (rather than
+# imported from `integrations.sandbox.base.SandboxProviderKind`) because config.py
+# must not import `integrations.sandbox` -- that module imports config back,
+# which would create an import cycle. Keep this tuple in sync with
+# `SandboxProviderKind` by hand.
+_KNOWN_SANDBOX_PROVIDERS = ("e2b", "kubernetes")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -592,8 +599,14 @@ class Settings(BaseSettings):
         on ``sandbox_provider`` so boot validators and the capability contract
         don't require E2B when running against Kubernetes. Kubernetes has
         defaults for every setting it reads (namespace/image/storage class),
-        so it is always considered configured.
+        so it is always considered configured. An unrecognized
+        ``sandbox_provider`` (operator typo) is never considered configured,
+        even if E2B env happens to be present -- otherwise a typo like
+        ``SANDBOX_PROVIDER=bogus`` would silently read as ready and only fail
+        later, at first provision, inside ``get_sandbox_provider``.
         """
+        if self.sandbox_provider not in _KNOWN_SANDBOX_PROVIDERS:
+            return False
         if self.sandbox_provider == "kubernetes":
             return True
         return self.cloud_provisioning_configured
@@ -603,8 +616,12 @@ class Settings(BaseSettings):
         """Provider-agnostic peer of ``cloud_provisioning_partially_configured``.
 
         Kubernetes has no partial-configuration state (every setting has a
-        usable default), so this is always False for it.
+        usable default), so this is always False for it. An unrecognized
+        provider is likewise never "partially configured": it is a distinct,
+        named error surfaced via ``sandbox_provisioning_config_error`` instead.
         """
+        if self.sandbox_provider not in _KNOWN_SANDBOX_PROVIDERS:
+            return False
         if self.sandbox_provider == "kubernetes":
             return False
         return self.cloud_provisioning_partially_configured
@@ -612,6 +629,11 @@ class Settings(BaseSettings):
     @property
     def sandbox_provisioning_config_error(self) -> str | None:
         """Provider-agnostic peer of ``cloud_provisioning_config_error``."""
+        if self.sandbox_provider not in _KNOWN_SANDBOX_PROVIDERS:
+            return (
+                f"SANDBOX_PROVIDER={self.sandbox_provider!r} is not a recognized "
+                f"sandbox provider (expected one of: {', '.join(_KNOWN_SANDBOX_PROVIDERS)})."
+            )
         if self.sandbox_provider == "kubernetes":
             return None
         return self.cloud_provisioning_config_error
