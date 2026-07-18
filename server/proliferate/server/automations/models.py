@@ -8,7 +8,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from proliferate.db.store.automation_run_claim_values import AutomationRunClaimValue
 from proliferate.db.store.automation_runs import AutomationRunValue
 from proliferate.db.store.automations import AutomationValue
 
@@ -137,67 +136,6 @@ class AutomationRunListResponse(AutomationBaseModel):
     runs: list[AutomationRunResponse]
 
 
-class LocalExecutorRepositoryIdentity(AutomationBaseModel):
-    provider: str
-    owner: str
-    name: str
-
-
-class LocalAutomationClaimRequest(AutomationBaseModel):
-    executor_id: str = Field(alias="executorId")
-    available_repositories: list[LocalExecutorRepositoryIdentity] = Field(
-        alias="availableRepositories",
-    )
-    limit: int = 1
-
-
-class LocalAutomationRunClaimResponse(AutomationBaseModel):
-    id: str
-    automation_id: str = Field(alias="automationId")
-    status: RunStatus
-    target_mode: TargetMode = Field(alias="targetMode")
-    title_snapshot: str = Field(alias="titleSnapshot")
-    prompt_snapshot: str = Field(alias="promptSnapshot")
-    git_provider_snapshot: str = Field(alias="gitProviderSnapshot")
-    git_owner_snapshot: str = Field(alias="gitOwnerSnapshot")
-    git_repo_name_snapshot: str = Field(alias="gitRepoNameSnapshot")
-    cloud_agent_run_config_id_snapshot: str | None = Field(alias="cloudAgentRunConfigIdSnapshot")
-    agent_kind_snapshot: str | None = Field(alias="agentKindSnapshot")
-    model_id_snapshot: str | None = Field(alias="modelIdSnapshot")
-    mode_id_snapshot: str | None = Field(alias="modeIdSnapshot")
-    reasoning_effort_snapshot: str | None = Field(alias="reasoningEffortSnapshot")
-    claim_id: str = Field(alias="claimId")
-    claim_expires_at: str = Field(alias="claimExpiresAt")
-    anyharness_workspace_id: str | None = Field(alias="anyharnessWorkspaceId")
-    anyharness_session_id: str | None = Field(alias="anyharnessSessionId")
-
-
-class LocalAutomationClaimListResponse(AutomationBaseModel):
-    runs: list[LocalAutomationRunClaimResponse]
-
-
-class LocalAutomationClaimActionRequest(AutomationBaseModel):
-    executor_id: str = Field(alias="executorId")
-    claim_id: UUID = Field(alias="claimId")
-
-
-class LocalAutomationAttachWorkspaceRequest(LocalAutomationClaimActionRequest):
-    anyharness_workspace_id: str = Field(alias="anyharnessWorkspaceId")
-
-
-class LocalAutomationAttachSessionRequest(LocalAutomationAttachWorkspaceRequest):
-    anyharness_session_id: str = Field(alias="anyharnessSessionId")
-
-
-class LocalAutomationFailRequest(LocalAutomationClaimActionRequest):
-    error_code: str = Field(alias="errorCode")
-
-
-class LocalAutomationMutationResponse(AutomationBaseModel):
-    run: LocalAutomationRunClaimResponse | None = None
-    accepted: bool = True
-
-
 def automation_payload(value: AutomationValue) -> AutomationResponse:
     return AutomationResponse(
         id=str(value.id),
@@ -272,28 +210,3 @@ def automation_run_payload(value: AutomationRunValue) -> AutomationRunResponse:
     )
 
 
-def local_claim_payload(value: AutomationRunClaimValue) -> LocalAutomationRunClaimResponse:
-    return LocalAutomationRunClaimResponse(
-        id=str(value.id),
-        automation_id=str(value.automation_id),
-        status=value.status,  # type: ignore[arg-type]
-        target_mode=value.target_mode,  # type: ignore[arg-type]
-        title_snapshot=value.title,
-        prompt_snapshot=value.prompt,
-        git_provider_snapshot=value.git_provider,
-        git_owner_snapshot=value.git_owner,
-        git_repo_name_snapshot=value.git_repo_name,
-        cloud_agent_run_config_id_snapshot=(
-            str(value.cloud_agent_run_config_id_snapshot)
-            if value.cloud_agent_run_config_id_snapshot
-            else None
-        ),
-        agent_kind_snapshot=value.agent_kind,
-        model_id_snapshot=value.model_id,
-        mode_id_snapshot=value.mode_id,
-        reasoning_effort_snapshot=value.reasoning_effort,
-        claim_id=str(value.claim_id),
-        claim_expires_at=value.claim_expires_at.isoformat(),
-        anyharness_workspace_id=value.anyharness_workspace_id,
-        anyharness_session_id=value.anyharness_session_id,
-    )

@@ -15,31 +15,12 @@ from proliferate.constants.automations import (
 )
 from proliferate.db.engine import get_async_session
 from proliferate.db.models.auth import User
-from proliferate.server.automations.local_executor import (
-    attach_local_run_session,
-    attach_local_run_workspace,
-    claim_local_runs,
-    heartbeat_local_run,
-    mark_local_run_creating_session,
-    mark_local_run_creating_workspace,
-    mark_local_run_dispatched,
-    mark_local_run_dispatching,
-    mark_local_run_failed,
-    mark_local_run_provisioning_workspace,
-)
 from proliferate.server.automations.models import (
     AutomationListResponse,
     AutomationResponse,
     AutomationRunListResponse,
     AutomationRunResponse,
     CreateAutomationRequest,
-    LocalAutomationAttachSessionRequest,
-    LocalAutomationAttachWorkspaceRequest,
-    LocalAutomationClaimActionRequest,
-    LocalAutomationClaimListResponse,
-    LocalAutomationClaimRequest,
-    LocalAutomationFailRequest,
-    LocalAutomationMutationResponse,
     UpdateAutomationRequest,
     automation_payload,
     automation_run_payload,
@@ -81,132 +62,6 @@ async def create_automation_endpoint(
     user: User = Depends(current_product_user),
 ) -> AutomationResponse:
     return automation_payload(await create_automation(db, user.id, body))
-
-
-@router.post("/executor/local/claims", response_model=LocalAutomationClaimListResponse)
-async def claim_local_runs_endpoint(
-    body: LocalAutomationClaimRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationClaimListResponse:
-    return await claim_local_runs(db, user.id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/heartbeat",
-    response_model=LocalAutomationMutationResponse,
-)
-async def heartbeat_local_run_endpoint(
-    run_id: UUID,
-    body: LocalAutomationClaimActionRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await heartbeat_local_run(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/creating-workspace",
-    response_model=LocalAutomationMutationResponse,
-)
-async def mark_local_run_creating_workspace_endpoint(
-    run_id: UUID,
-    body: LocalAutomationClaimActionRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await mark_local_run_creating_workspace(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/attach-workspace",
-    response_model=LocalAutomationMutationResponse,
-)
-async def attach_local_run_workspace_endpoint(
-    run_id: UUID,
-    body: LocalAutomationAttachWorkspaceRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await attach_local_run_workspace(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/provisioning-workspace",
-    response_model=LocalAutomationMutationResponse,
-)
-async def mark_local_run_provisioning_workspace_endpoint(
-    run_id: UUID,
-    body: LocalAutomationClaimActionRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await mark_local_run_provisioning_workspace(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/creating-session",
-    response_model=LocalAutomationMutationResponse,
-)
-async def mark_local_run_creating_session_endpoint(
-    run_id: UUID,
-    body: LocalAutomationAttachWorkspaceRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await mark_local_run_creating_session(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/attach-session",
-    response_model=LocalAutomationMutationResponse,
-)
-async def attach_local_run_session_endpoint(
-    run_id: UUID,
-    body: LocalAutomationAttachSessionRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await attach_local_run_session(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/dispatching",
-    response_model=LocalAutomationMutationResponse,
-)
-async def mark_local_run_dispatching_endpoint(
-    run_id: UUID,
-    body: LocalAutomationClaimActionRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await mark_local_run_dispatching(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/dispatched",
-    response_model=LocalAutomationMutationResponse,
-)
-async def mark_local_run_dispatched_endpoint(
-    run_id: UUID,
-    body: LocalAutomationAttachSessionRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await mark_local_run_dispatched(db, user.id, run_id, body)
-
-
-@router.post(
-    "/executor/local/runs/{run_id}/failed",
-    response_model=LocalAutomationMutationResponse,
-)
-async def mark_local_run_failed_endpoint(
-    run_id: UUID,
-    body: LocalAutomationFailRequest,
-    db: AsyncSession = Depends(get_async_session),
-    user: User = Depends(current_product_user),
-) -> LocalAutomationMutationResponse:
-    return await mark_local_run_failed(db, user.id, run_id, body)
 
 
 @router.get("/{automation_id}", response_model=AutomationResponse)
