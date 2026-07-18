@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileWorkInventory } from "../../hooks/work/derived/use-mobile-work-inventory";
 import { useMobileWorkFilters } from "../../hooks/work/ui/use-mobile-work-filters";
@@ -27,7 +28,8 @@ import {
   MobileWorkFilterSheet,
 } from "./screen/MobileWorkFilterSheet";
 import { MobileWorkSummaryPill } from "./screen/MobileWorkFilterRows";
-import { colors, radius, spacing } from "../../styles/tokens";
+import { tabBarFootprint } from "../shell/tabbar/MobileTabBar";
+import { colors, layout, radius, spacing } from "../../styles/tokens";
 
 interface MobileWorkspacesScreenProps {
   onOpenChat: (chat: MobileCloudChat) => void;
@@ -38,6 +40,12 @@ export function MobileWorkspacesScreen({
   onOpenChat,
   onNewChat,
 }: MobileWorkspacesScreenProps) {
+  const insets = useSafeAreaInsets();
+  // The floating glass tab bar is an absolutely-positioned sibling, not a
+  // layout participant, so the scroll content must reserve its footprint
+  // itself or the last workspace card scrolls to a resting point underneath
+  // the bar, where taps hit the bar's Pressables instead.
+  const scrollContentBottomPadding = Math.max(layout.screenBottomPadding, tabBarFootprint(insets.bottom));
   const [filterOpen, setFilterOpen] = useState(false);
   const allInventory = useMobileWorkInventory();
   const filterState = useMobileWorkFilters(allInventory.items);
@@ -56,7 +64,7 @@ export function MobileWorkspacesScreen({
 
   return (
     <MobileScreen
-      contentStyle={styles.screenContent}
+      contentStyle={[styles.screenContent, { paddingBottom: scrollContentBottomPadding }]}
       refreshControl={
         <RefreshControl
           refreshing={inventory.isFetching && !inventory.isLoading}

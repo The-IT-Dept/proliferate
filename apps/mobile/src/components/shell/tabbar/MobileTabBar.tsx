@@ -15,6 +15,25 @@ interface MobileTabBarProps {
   badgeCounts?: Partial<Record<RouteId, number>>;
 }
 
+/** Height of the floating glass bar itself (`styles.bar`). */
+export const TAB_BAR_HEIGHT = 64;
+/** Gap between the bar and the bottom safe-area inset (`styles.wrap`'s `bottom`). */
+export const TAB_BAR_BOTTOM_GAP = 10;
+
+/**
+ * The bar's total footprint measured up from the bottom of the screen,
+ * including the safe-area inset it floats above. `MobileTabBar` is an
+ * absolutely-positioned sibling over the tab content, not a layout
+ * participant, so tab bodies must reserve this much bottom content inset
+ * themselves — otherwise their last/bottom-most content (and any
+ * interactive control near it) sits underneath the glass bar, where taps
+ * hit the bar's Pressables instead. This is the single source of truth for
+ * that number so the bar and the tab bodies can't drift apart.
+ */
+export function tabBarFootprint(insetsBottom: number): number {
+  return TAB_BAR_HEIGHT + TAB_BAR_BOTTOM_GAP + insetsBottom;
+}
+
 /**
  * The floating 4-tab glass shell (IA §1: Home / Workspaces / Automations /
  * Settings, "Liquid Glass, floating"). Replaces the previous drawer as the
@@ -25,7 +44,7 @@ export function MobileTabBar({ activeRoute, onNavigate, badgeCounts }: MobileTab
   const insets = useSafeAreaInsets();
 
   return (
-    <View pointerEvents="box-none" style={[styles.wrap, { bottom: insets.bottom + 10 }]}>
+    <View pointerEvents="box-none" style={[styles.wrap, { bottom: insets.bottom + TAB_BAR_BOTTOM_GAP }]}>
       <GlassSurface variant="tab" style={styles.bar}>
         {tabRoutes.map((route) => {
           const active = route.id === activeRoute;
@@ -76,7 +95,7 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   bar: {
-    height: 64,
+    height: TAB_BAR_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-around",

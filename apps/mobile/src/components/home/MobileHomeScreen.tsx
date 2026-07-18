@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileHomeLaunchModel } from "../../hooks/home/derived/use-mobile-home-launch-model";
 import { useMobileHomeLaunchActions } from "../../hooks/home/workflows/use-mobile-home-launch-actions";
@@ -25,6 +26,7 @@ import { MobileHomeComposer } from "./screen/MobileHomeComposer";
 import { MobileHomeConfigSheet } from "./screen/MobileHomeConfigSheet";
 import { MobileHomeRecentSection } from "./screen/MobileHomeRecentSection";
 import { MobileHomeRepoPopover } from "./screen/MobileHomeRepoPopover";
+import { tabBarFootprint } from "../shell/tabbar/MobileTabBar";
 
 interface MobileHomeScreenProps {
   ownerUserId: string | null;
@@ -43,6 +45,15 @@ export function MobileHomeScreen({
   onConfigureRepos,
 }: MobileHomeScreenProps) {
   const keyboardInset = useVisualViewportKeyboardInset();
+  const insets = useSafeAreaInsets();
+  // The floating glass tab bar is an absolutely-positioned sibling, not a
+  // layout participant, so the scroll content must reserve its footprint
+  // itself or the Recent list's last item (and the composer's send control,
+  // when the list is short) scrolls to a resting point underneath the bar.
+  const scrollContentBottomPadding = Math.max(
+    SCROLL_CONTENT_BOTTOM_PADDING,
+    tabBarFootprint(insets.bottom),
+  );
   const [draft, setDraft] = useState("");
   const [sheet, setSheet] = useState<HomeSheet>(null);
   const launchModel = useMobileHomeLaunchModel();
@@ -115,7 +126,8 @@ export function MobileHomeScreen({
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          keyboardInset > 0 && { paddingBottom: SCROLL_CONTENT_BOTTOM_PADDING + keyboardInset },
+          { paddingBottom: scrollContentBottomPadding },
+          keyboardInset > 0 && { paddingBottom: scrollContentBottomPadding + keyboardInset },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -239,7 +251,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: spacing[5],
     paddingTop: spacing[8],
-    paddingBottom: SCROLL_CONTENT_BOTTOM_PADDING,
+    // paddingBottom is set inline (scrollContentBottomPadding) so it can
+    // reserve the floating tab bar's footprint — see that computation above.
     gap: spacing[3],
   },
   dateEyebrow: {

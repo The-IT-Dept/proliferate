@@ -5,6 +5,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileSettingsModel } from "../../hooks/settings/facade/use-mobile-settings-model";
 import { useMobileBillingActions } from "../../hooks/settings/workflows/use-mobile-billing-actions";
@@ -23,6 +24,7 @@ import {
   MobileSettingsRow,
   MobileSettingsSection,
 } from "./screen/MobileSettingsSection";
+import { tabBarFootprint } from "../shell/tabbar/MobileTabBar";
 import { colors, spacing } from "../../styles/tokens";
 
 interface MobileSettingsScreenProps {
@@ -31,6 +33,12 @@ interface MobileSettingsScreenProps {
 }
 
 export function MobileSettingsScreen({ account, onSignOut }: MobileSettingsScreenProps) {
+  const insets = useSafeAreaInsets();
+  // The floating glass tab bar is an absolutely-positioned sibling, not a
+  // layout participant, so the scroll content must reserve its footprint
+  // itself or the Sign out control scrolls to a resting point underneath
+  // the bar, where taps hit the bar's Pressables instead.
+  const scrollContentBottomPadding = Math.max(spacing[6], tabBarFootprint(insets.bottom));
   const settingsModel = useMobileSettingsModel(account);
   const billingWorkflow = useMobileBillingActions();
   const [addRepoOpen, setAddRepoOpen] = useState(false);
@@ -41,7 +49,7 @@ export function MobileSettingsScreen({ account, onSignOut }: MobileSettingsScree
   const sectionLabels = mobileSectionLabels();
 
   return (
-    <MobileScreen contentStyle={styles.screenContent}>
+    <MobileScreen contentStyle={[styles.screenContent, { paddingBottom: scrollContentBottomPadding }]}>
       <View style={styles.profile}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initialsForMobileSettingsName(settingsModel.displayName)}</Text>
@@ -199,7 +207,8 @@ const styles = StyleSheet.create({
   screenContent: {
     paddingHorizontal: spacing[4],
     paddingTop: spacing[4],
-    paddingBottom: spacing[6],
+    // paddingBottom is set inline (scrollContentBottomPadding) so it can
+    // reserve the floating tab bar's footprint — see that computation above.
   },
   profile: {
     alignItems: "center",
