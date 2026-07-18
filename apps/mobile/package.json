@@ -4,13 +4,14 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "build:shared": "pnpm --filter @proliferate/cloud-sdk build && pnpm --filter @proliferate/cloud-sdk-react build && pnpm --filter @proliferate/design build && pnpm --filter @proliferate/product-domain build",
+    "build:shared": "pnpm --filter @proliferate/cloud-sdk build && pnpm --filter @proliferate/cloud-sdk-react build && pnpm --filter @anyharness/sdk build && pnpm --filter @anyharness/sdk-react build && pnpm --filter @proliferate/design build && pnpm --filter @proliferate/product-domain build",
     "start": "pnpm build:shared && expo start",
     "ios": "pnpm build:shared && expo start --ios",
     "android": "pnpm build:shared && expo start --android",
     "web": "pnpm build:shared && expo start --web",
     "web:profile": "pnpm build:shared && expo start --web --host localhost --port ${PROLIFERATE_MOBILE_WEB_PORT:-5175}",
     "typecheck": "pnpm build:shared && tsc --noEmit",
+    "test": "vitest run",
     "build:ios": "pnpm build:shared && pnpm dlx eas-cli@21.0.2 build --platform ios --profile production",
     "build:ios:preview": "pnpm build:shared && pnpm dlx eas-cli@21.0.2 build --platform ios --profile preview",
     "eas-build-post-install": "pnpm build:shared",
@@ -18,6 +19,7 @@
   },
   "dependencies": {
     "@anyharness/sdk": "workspace:*",
+    "@anyharness/sdk-react": "workspace:*",
     "@proliferate/cloud-sdk": "workspace:*",
     "@proliferate/cloud-sdk-react": "workspace:*",
     "@proliferate/design": "workspace:*",
@@ -49,7 +51,8 @@
   "devDependencies": {
     "@expo/ngrok": "^4.1.3",
     "@types/react": "~19.2.17",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.7"
   },
   "expo": {
     "install": {
