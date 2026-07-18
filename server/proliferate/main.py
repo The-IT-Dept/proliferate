@@ -64,6 +64,7 @@ from proliferate.server.cloud.github_app.api import (
     setup_callback_router as github_app_setup_callback_router,
 )
 from proliferate.server.cloud.integrations.seeds import sync_seed_definitions
+from proliferate.server.cloud.push.api import router as push_router
 from proliferate.server.devtools.api import router as devtools_router
 from proliferate.server.health import router as health_router
 from proliferate.server.meta import router as meta_router
@@ -314,6 +315,9 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router, prefix=f"{api_prefix}/v1", tags=["analytics"])
     app.include_router(cloud_router, prefix=f"{api_prefix}/v1", tags=["cloud"])
     app.include_router(gateway_router, prefix=f"{api_prefix}/v1/gateway", tags=["gateway"])
+    # Runtime->Cloud interaction push webhook, authenticated by per-sandbox
+    # runtime-worker bearer token (not end-user auth): /v1/internal/push/*.
+    app.include_router(push_router, prefix=f"{api_prefix}/v1", tags=["push"])
     app.include_router(catalogs_router, prefix=f"{api_prefix}/v1", tags=["catalogs"])
     app.include_router(workflows_router, prefix=f"{api_prefix}/v1", tags=["workflows"])
     app.include_router(
