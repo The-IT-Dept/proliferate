@@ -63,6 +63,19 @@ const state = vi.hoisted(() => ({
     isLoading: false,
   },
   agentsByKind: new Map<string, LocalAgent>(),
+  // Deliberately a SEPARATE map from `agentsByKind`: the cloud surface's
+  // agent state (readiness/supportsLogin driving the Authenticate button and
+  // post-login "ready" close) must come from the cloud-scoped catalog
+  // (useWorkspaceAgentCatalog), never from the local desktop's `agentsByKind`
+  // above. Keeping the two maps distinct — instead of both mocks reusing one
+  // shared map — is what lets the cloud-surface tests below actually catch a
+  // regression back to reading the local map on the cloud surface.
+  cloudAgentsByKind: new Map<string, LocalAgent>(),
+  selectedCloudRuntime: {
+    workspaceId: "cloud:workspace-1" as string | null,
+    cloudWorkspaceId: "workspace-1" as string | null,
+    phase: "ready" as string | null,
+  },
   loginSessions: {} as Record<string, {
     kind: string;
     terminal: Record<string, unknown> | null;
@@ -225,7 +238,28 @@ vi.mock("#product/hooks/cloud/derived/use-cloud-availability-state", () => ({
 vi.mock("#product/hooks/agents/derived/use-agent-catalog", () => ({
   useAgentCatalog: () => ({ agentsByKind: state.agentsByKind, agentsNeedingSetup: [], isReconciling: false, reconcileSnapshot: null }),
 }));
-vi.mock("#product/hooks/agents/derived/use-workspace-agent-catalog", () => ({ useWorkspaceAgentCatalog: () => ({ agentsByKind: state.agentsByKind, agentsNeedingSetup: [], isReconciling: false, reconcileSnapshot: null }) }));
+// Distinct from useAgentCatalog's map above (see state.cloudAgentsByKind) —
+// this is the cloud-scoped catalog use-harness-auth-editor.ts reads from on
+// the cloud surface.
+vi.mock("#product/hooks/agents/derived/use-workspace-agent-catalog", () => ({
+  useWorkspaceAgentCatalog: () => ({
+    agentsByKind: state.cloudAgentsByKind,
+    agentsNeedingSetup: [],
+    isReconciling: false,
+    reconcileSnapshot: null,
+  }),
+}));
+vi.mock("#product/hooks/workspaces/facade/use-selected-cloud-runtime-state", () => ({
+  useSelectedCloudRuntimeState: () => ({
+    workspaceId: state.selectedCloudRuntime.workspaceId,
+    cloudWorkspaceId: state.selectedCloudRuntime.cloudWorkspaceId,
+    state: state.selectedCloudRuntime.phase ? { phase: state.selectedCloudRuntime.phase } : null,
+    connectionInfo: null,
+    retry: null,
+    claim: null,
+    claimPending: false,
+  }),
+}));
 vi.mock("#product/hooks/agents/workflows/use-harness-install-action", () => ({
   useHarnessInstallAction: () => null,
 }));
@@ -267,7 +301,7 @@ vi.mock("#product/stores/ui/agent-surface-store", () => ({
     }),
 }));
 
-function renderPane(harnessKind = "claude") {
+function harnessPaneElement(harnessKind: string) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -275,13 +309,17 @@ function renderPane(harnessKind = "claude") {
     },
   });
 
-  return render(
+  return (
     <QueryClientProvider client={queryClient}>
       <ProductHostProvider host={harnessTestHost}>
         <HarnessPane harnessKind={harnessKind} />
       </ProductHostProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+}
+
+function renderPane(harnessKind = "claude") {
+  return render(harnessPaneElement(harnessKind));
 }
 
 function gatewayCard() {
@@ -306,6 +344,12 @@ afterEach(() => {
   state.catalog.data = undefined;
   state.catalog.isLoading = false;
   state.agentsByKind = new Map();
+  state.cloudAgentsByKind = new Map();
+  state.selectedCloudRuntime = {
+    workspaceId: "cloud:workspace-1",
+    cloudWorkspaceId: "workspace-1",
+    phase: "ready",
+  };
   state.loginSessions = {};
   state.loginConnectionAvailable = true;
   state.gatewayModels.data = undefined;
@@ -718,7 +762,9 @@ describe("HarnessPane authentication", () => {
 
   it("offers Run login on the cloud surface when a cloud sandbox connection is available", () => {
     state.agentSurface = "cloud";
-    state.agentsByKind = new Map([[
+    // Seeded on the CLOUD catalog (not the local one) — the cloud surface
+    // must drive the button off the cloud sandbox's agent state.
+    state.cloudAgentsByKind = new Map([[
       "claude",
       {
         kind: "claude",
@@ -737,10 +783,118 @@ describe("HarnessPane authentication", () => {
     );
   });
 
+  // M5 review Fix 1/4: the Authenticate button used to be gated by the LOCAL
+  // machine's agent state even on the cloud surface, so it never appeared
+  // for the common case (local Claude already authenticated, or not
+  // installed at all). These two pin the fix by giving the LOCAL catalog a
+  // state where the OLD code would have hidden the button, while the CLOUD
+  // catalog (a genuinely distinct mock — see state.cloudAgentsByKind) is in
+  // the one state that shows it.
+  it("shows Authenticate on the cloud surface even when the LOCAL agent is already authenticated", () => {
+    state.agentSurface = "cloud";
+    state.agentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "ready",
+        supportsLogin: true,
+      },
+    ]]);
+    state.cloudAgentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "login_required",
+        supportsLogin: true,
+      },
+    ]]);
+    renderPane("claude");
+
+    fireEvent.click(screen.getByRole("button", { name: "Authenticate" }));
+
+    expect(openAuthTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "claude" }),
+      { restart: false },
+    );
+  });
+
+  it("shows Authenticate on the cloud surface even when the LOCAL agent map is empty", () => {
+    state.agentSurface = "cloud";
+    state.agentsByKind = new Map();
+    state.cloudAgentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "login_required",
+        supportsLogin: true,
+      },
+    ]]);
+    renderPane("claude");
+
+    fireEvent.click(screen.getByRole("button", { name: "Authenticate" }));
+
+    expect(openAuthTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "claude" }),
+      { restart: false },
+    );
+  });
+
+  // M5 review Fix 2: post-login success (terminal auto-close + ready toast)
+  // must also key off the cloud catalog on the cloud surface, not the local
+  // one (which never changes as a result of a cloud login).
+  it("closes the terminal and shows a ready toast once the CLOUD agent becomes ready mid-login", () => {
+    state.agentSurface = "cloud";
+    // Local stays login_required throughout (never becomes ready) — proves
+    // the close/toast is driven by the CLOUD catalog transitioning, not this.
+    state.agentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "login_required",
+        supportsLogin: true,
+      },
+    ]]);
+    state.cloudAgentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "login_required",
+        supportsLogin: true,
+      },
+    ]]);
+    state.loginSessions = {
+      claude: { kind: "claude", terminal: { id: "term-1" }, errorMessage: null, isStarting: false },
+    };
+    const { rerender } = renderPane("claude");
+
+    expect(closeAuthTerminal).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+
+    // The cloud sandbox's login completes: its catalog flips ready.
+    state.cloudAgentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "ready",
+        supportsLogin: true,
+      },
+    ]]);
+    rerender(harnessPaneElement("claude"));
+
+    expect(closeAuthTerminal).toHaveBeenCalledWith("claude");
+    expect(showToast).toHaveBeenCalledWith("Claude Code is ready.");
+  });
+
   it("shows a not-connected message on the cloud surface with no cloud sandbox connection", () => {
     state.agentSurface = "cloud";
     state.loginConnectionAvailable = false;
-    state.agentsByKind = new Map([[
+    state.cloudAgentsByKind = new Map([[
       "claude",
       {
         kind: "claude",

@@ -8,7 +8,16 @@ import { getAgentsNeedingSetup } from "#product/lib/domain/agents/status";
 
 const EMPTY_AGENTS: AgentSummary[] = [];
 
-export function useWorkspaceAgentCatalog(options?: { enabled?: boolean }) {
+export function useWorkspaceAgentCatalog(
+  // `workspaceId` overrides the AnyHarnessWorkspace context's (route-scoped —
+  // see workspace-provider-scope.ts) default, so a caller that already knows
+  // the exact workspace it wants (e.g. the auth editor pinning the CLOUD
+  // surface to useSelectedCloudRuntimeState().workspaceId, independent of
+  // whatever route Settings happens to be mounted under) can target it
+  // directly. Falls through to useWorkspaceAgentsQuery/
+  // useWorkspaceAgentReconcileStatusQuery's own context fallback when omitted.
+  options?: { enabled?: boolean; workspaceId?: string | null },
+) {
   const agentsQuery = useWorkspaceAgentsQuery(options);
   const reconcileQuery = useWorkspaceAgentReconcileStatusQuery({
     ...options,

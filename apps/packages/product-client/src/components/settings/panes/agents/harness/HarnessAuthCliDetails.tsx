@@ -20,7 +20,7 @@ export function CliDetails({
   editor: HarnessAuthEditorApi;
   variant: HarnessBlockVariant;
 }) {
-  const { localAgent, loginSession, loginWorkflow } = editor;
+  const { agent, loginSession, loginWorkflow } = editor;
   const runtimeUrl = useHarnessConnectionStore((state) => state.runtimeUrl);
   const { invalidateAgentListResources } = useAgentResourcesCache();
   const [refreshing, setRefreshing] = useState(false);
@@ -51,22 +51,22 @@ export function CliDetails({
 
   // Prefer cliAuthState for CLI status (env-unmasked); fall back to readiness
   // for older runtimes that don't yet expose it.
-  const cliAuthState = localAgent?.cliAuthState;
+  const cliAuthState = agent?.cliAuthState;
   const cliIsAuthenticated = cliAuthState === "authenticated";
   const cliIsExpired = cliAuthState === "expired";
   const cliIsAbsent = cliAuthState === "absent";
 
   // Fallback: when cliAuthState is missing/unsupported, derive from readiness
   const fallbackCanRunLogin =
-    localAgent != null
-    && !isReadyAgent(localAgent)
-    && localAgent.readiness === "login_required"
-    && localAgent.supportsLogin;
-  const fallbackIsAuthenticated = localAgent != null && isReadyAgent(localAgent);
+    agent != null
+    && !isReadyAgent(agent)
+    && agent.readiness === "login_required"
+    && agent.supportsLogin;
+  const fallbackIsAuthenticated = agent != null && isReadyAgent(agent);
 
   // If cliAuthState is present, use it; otherwise fall back to readiness-based logic
   const canRunLogin = cliAuthState
-    ? (cliIsExpired || cliIsAbsent) && localAgent?.supportsLogin
+    ? (cliIsExpired || cliIsAbsent) && agent?.supportsLogin
     : fallbackCanRunLogin;
 
   const isAuthenticated = cliAuthState
@@ -118,8 +118,8 @@ export function CliDetails({
               size="sm"
               disabled={loginSession?.isStarting ?? false}
               onClick={() => {
-                if (localAgent) {
-                  void loginWorkflow.openAuthTerminal(localAgent, {
+                if (agent) {
+                  void loginWorkflow.openAuthTerminal(agent, {
                     restart: Boolean(loginSession),
                   });
                 }
@@ -145,8 +145,8 @@ export function CliDetails({
               void loginWorkflow.handleTerminalExit(kind, code);
             }}
             onRestart={() => {
-              if (localAgent) {
-                void loginWorkflow.openAuthTerminal(localAgent, { restart: true });
+              if (agent) {
+                void loginWorkflow.openAuthTerminal(agent, { restart: true });
               }
             }}
           />

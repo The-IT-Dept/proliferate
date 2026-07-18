@@ -249,6 +249,14 @@ describe("useAgentLoginTerminalWorkflow - cloud surface", () => {
 
     expect(closeLoginTerminalClientFn).toHaveBeenCalledWith("term-3");
     expect(localCloseMutateAsync).not.toHaveBeenCalled();
-    expect(invalidateAgentLaunchReadinessResources).toHaveBeenCalledWith(CLOUD_GATEWAY_URL);
+    // M5 review Fix 2: readiness invalidation must ALSO carry the cloud
+    // workspaceId — useWorkspaceAgentCatalog's cache is keyed by workspaceId,
+    // not runtimeUrl, so omitting it left the cloud-scoped agent catalog's
+    // cache stale after a login (the post-login "ready" close/toast and the
+    // readiness poll were both no-ops for cloud).
+    expect(invalidateAgentLaunchReadinessResources).toHaveBeenCalledWith(
+      CLOUD_GATEWAY_URL,
+      { workspaceId: "cloud:workspace-1" },
+    );
   });
 });

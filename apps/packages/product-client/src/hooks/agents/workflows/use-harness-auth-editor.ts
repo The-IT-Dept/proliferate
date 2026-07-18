@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { AgentSummary } from "@anyharness/sdk";
 import type { AgentAuthSurface } from "@proliferate/cloud-sdk";
 import {
   useAgentApiKeys,
@@ -10,9 +11,11 @@ import {
 } from "@proliferate/cloud-sdk-react";
 import { getHarnessEnvVarSuggestions } from "#product/config/harness-env-vars";
 import { useAgentCatalog } from "#product/hooks/agents/derived/use-agent-catalog";
+import { useWorkspaceAgentCatalog } from "#product/hooks/agents/derived/use-workspace-agent-catalog";
 import { useAgentLoginTerminalWorkflow } from "#product/hooks/agents/workflows/use-agent-login-terminal-workflow";
 import { useActiveOrganization } from "#product/hooks/organizations/facade/use-active-organization";
 import { useCloudAvailabilityState } from "#product/hooks/cloud/derived/use-cloud-availability-state";
+import { useSelectedCloudRuntimeState } from "#product/hooks/workspaces/facade/use-selected-cloud-runtime-state";
 import { isReadyAgent } from "#product/lib/domain/agents/status";
 import {
   buildDesiredSources,
@@ -64,7 +67,13 @@ export interface HarnessAuthEditorApi {
   // real source becomes enabled and reset per (harness, surface) scope.
   pendingMethod: AuthMethod | null;
   setPendingMethod: (method: AuthMethod | null) => void;
-  localAgent: ReturnType<ReturnType<typeof useAgentCatalog>["agentsByKind"]["get"]>;
+  // Surface-scoped: useAgentCatalog() (the LOCAL desktop runtime) on "local",
+  // useWorkspaceAgentCatalog() pinned to the selected cloud sandbox on
+  // "cloud" — see the wiring below. Never the local agent's readiness while
+  // on the cloud surface (that was the M5 review's Fix 1/2 bug: the CLI-login
+  // button and post-login "ready" close/toast used to derive from this
+  // machine's own credentials regardless of surface).
+  agent: AgentSummary | undefined;
   loginSession: ReturnType<
     typeof useAgentLoginTerminalWorkflow
   >["sessionsByKind"][string] | undefined;
@@ -115,7 +124,29 @@ export function useHarnessAuthEditor(
   const selectionsQuery = useAuthSelections(null, authReady);
   const apiKeysQuery = useAgentApiKeys(authReady);
   const putSelections = usePutAuthSelections();
-  const { agentsByKind } = useAgentCatalog();
+
+  const isCloudSurface = surface === "cloud";
+  // CLOUD-scoped agent catalog: the SAME "selected workspace" concept
+  // useAgentLoginTerminalWorkflow('cloud') resolves its gateway connection
+  // from (useSelectedCloudRuntimeState -> cloud-sandbox-gateway.ts), so both
+  // stay pointed at the identical cloud sandbox. useWorkspaceAgentCatalog
+  // already does this job elsewhere (HarnessPane's "Selected workspace"
+  // install-target toggle) via useWorkspaceAgentsQuery's workspaceId
+  // override (@anyharness/sdk-react) — reused here directly rather than
+  // relying on the AnyHarnessWorkspace provider's own (route-scoped, see
+  // workspace-provider-scope.ts) default, since Settings is not itself
+  // workspace-scoped and may be opened with an unrelated route selected.
+  const selectedCloudRuntime = useSelectedCloudRuntimeState();
+  const cloudCatalogEnabled =
+    isCloudSurface
+    && selectedCloudRuntime.workspaceId !== null
+    && selectedCloudRuntime.state?.phase === "ready";
+  const localCatalog = useAgentCatalog();
+  const cloudCatalog = useWorkspaceAgentCatalog({
+    workspaceId: selectedCloudRuntime.workspaceId,
+    enabled: cloudCatalogEnabled,
+  });
+  const agentsByKind = isCloudSurface ? cloudCatalog.agentsByKind : localCatalog.agentsByKind;
   const loginWorkflow = useAgentLoginTerminalWorkflow(surface);
 
   // Local-authoritative editor: seeded once per (harness, surface) scope, then
@@ -146,29 +177,29 @@ export function useHarnessAuthEditor(
     lastPutSigRef.current = JSON.stringify(buildDesiredSources(harnessKind, derived));
   }, [selections, scopeKey, harnessKind, surface]);
 
-  // KNOWN LIMITATION: always the LOCAL desktop runtime's agent (useAgentCatalog
-  // is never surface-aware), including on the cloud surface. `supportsLogin` is
-  // a static per-kind registry flag so it's fine either way, but
-  // `cliAuthState`/readiness reflect THIS MACHINE's credentials, not the cloud
-  // sandbox's — CliDetails' cloud copy can be wrong (e.g. "Authenticated" while
-  // the cloud sandbox itself was never logged in). Fixing this needs a
-  // cloud-scoped agent catalog analogous to useWorkspaceAgentCatalog, which is
-  // out of scope here; loginWorkflow.connectionAvailable/runtimeConnection
-  // (surface-aware) are what actually gate and drive the cloud login terminal.
-  const localAgent = agentsByKind.get(harnessKind);
+  // Surface-scoped agent: `agentsByKind` above already resolves to the LOCAL
+  // desktop catalog on "local" and the pinned cloud-sandbox catalog on
+  // "cloud", so `agent` (and everything CliDetails derives from it —
+  // cliAuthState, canRunLogin, isAuthenticated, readiness) reflects the
+  // right runtime on both surfaces.
+  const agent = agentsByKind.get(harnessKind);
   const loginSession = loginWorkflow.sessionsByKind[harnessKind];
 
   // Close the auth terminal once the login round-trip made the agent ready.
+  // Fires correctly for a cloud login too, PROVIDED the cloud catalog's
+  // cache actually got invalidated post-login — see
+  // use-agent-login-terminal-workflow.ts's refreshAgentReadiness /
+  // use-agent-resources-cache.ts's workspaceId-scoped invalidation.
   useEffect(() => {
-    if (!loginSession?.terminal || !localAgent || !isReadyAgent(localAgent)) {
+    if (!loginSession?.terminal || !agent || !isReadyAgent(agent)) {
       return;
     }
     showToast(HARNESS_PANE_COPY.readyToast(displayName));
     void loginWorkflow.closeAuthTerminal(harnessKind);
   }, [
+    agent,
     displayName,
     harnessKind,
-    localAgent,
     loginSession,
     loginWorkflow.closeAuthTerminal,
     showToast,
@@ -321,7 +352,7 @@ export function useHarnessAuthEditor(
     native,
     pendingMethod,
     setPendingMethod,
-    localAgent,
+    agent,
     loginSession,
     loginWorkflow,
     addKeyModalOpen,

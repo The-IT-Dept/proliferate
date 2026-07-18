@@ -158,9 +158,22 @@ export function useAgentLoginTerminalWorkflow(surface: AgentAuthSurface = "local
     [sessionsByKind],
   );
 
+  // Cloud readiness reads flow through useWorkspaceAgentCatalog (workspaceId-
+  // keyed), not the local runtime-keyed cache invalidateAgentLaunchReadinessResources
+  // targeted before — without the workspaceId, a completed cloud login never
+  // invalidated the cache the cloud-scoped agent catalog actually reads from,
+  // so `use-harness-auth-editor.ts`'s post-login "ready" effect and this
+  // polling effect were both no-ops for cloud. See use-agent-resources-cache.ts.
   const refreshAgentReadiness = useCallback(async () => {
-    await invalidateAgentLaunchReadinessResources(runtimeConnection.baseUrl);
-  }, [invalidateAgentLaunchReadinessResources, runtimeConnection.baseUrl]);
+    await invalidateAgentLaunchReadinessResources(runtimeConnection.baseUrl, {
+      workspaceId: isCloud ? selectedCloudRuntime.workspaceId : null,
+    });
+  }, [
+    invalidateAgentLaunchReadinessResources,
+    isCloud,
+    runtimeConnection.baseUrl,
+    selectedCloudRuntime.workspaceId,
+  ]);
 
   const startLoginTerminalRequest = useCallback(async (kind: string) => {
     if (isCloud) {

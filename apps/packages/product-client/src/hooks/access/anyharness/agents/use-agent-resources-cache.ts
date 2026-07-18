@@ -3,6 +3,8 @@ import {
   anyHarnessAgentGatewayModelsPrefixKey,
   anyHarnessAgentReconcileStatusKey,
   anyHarnessAgentsKey,
+  anyHarnessWorkspaceAgentReconcileStatusKey,
+  anyHarnessWorkspaceAgentsKey,
   useAnyHarnessCacheScopeKey,
 } from "@anyharness/sdk-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,27 +51,50 @@ export function useAgentResourcesCache() {
 
   const invalidateAgentLaunchReadinessResources = useCallback(async (
     runtimeUrl: string,
+    // Cloud login-terminal callers (useAgentLoginTerminalWorkflow) read agent
+    // readiness through useWorkspaceAgentCatalog, which is keyed by
+    // workspaceId (anyHarnessWorkspaceAgentsKey), NOT runtimeUrl
+    // (anyHarnessAgentsKey) — invalidating only the runtime-keyed entries
+    // left the cloud-scoped catalog's cache untouched after a login, so a
+    // successful cloud auth never surfaced as "ready" to that query. Pass
+    // workspaceId whenever the caller resolved one so both cache shapes get
+    // invalidated together.
+    options?: { workspaceId?: string | null },
   ) => {
     const normalizedRuntimeUrl = runtimeUrl.trim();
-    if (!normalizedRuntimeUrl) {
-      return;
+    const workspaceId = options?.workspaceId ?? null;
+    const tasks: Array<Promise<unknown>> = [];
+
+    if (normalizedRuntimeUrl) {
+      tasks.push(
+        invalidateAgentSetupResources(normalizedRuntimeUrl),
+        queryClient.invalidateQueries({
+          queryKey: anyHarnessAgentLaunchOptionsPrefixKey(
+            normalizedRuntimeUrl,
+            cacheScopeKey,
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: anyHarnessAgentGatewayModelsPrefixKey(
+            normalizedRuntimeUrl,
+            cacheScopeKey,
+          ),
+        }),
+      );
     }
 
-    await Promise.all([
-      invalidateAgentSetupResources(normalizedRuntimeUrl),
-      queryClient.invalidateQueries({
-        queryKey: anyHarnessAgentLaunchOptionsPrefixKey(
-          normalizedRuntimeUrl,
-          cacheScopeKey,
-        ),
-      }),
-      queryClient.invalidateQueries({
-        queryKey: anyHarnessAgentGatewayModelsPrefixKey(
-          normalizedRuntimeUrl,
-          cacheScopeKey,
-        ),
-      }),
-    ]);
+    if (workspaceId) {
+      tasks.push(
+        queryClient.invalidateQueries({
+          queryKey: anyHarnessWorkspaceAgentsKey(cacheScopeKey, workspaceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: anyHarnessWorkspaceAgentReconcileStatusKey(cacheScopeKey, workspaceId),
+        }),
+      );
+    }
+
+    await Promise.all(tasks);
   }, [cacheScopeKey, invalidateAgentSetupResources, queryClient]);
 
   return {
