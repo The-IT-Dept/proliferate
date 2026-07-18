@@ -104,6 +104,25 @@ USER user
 WORKDIR /home/user/workspace
 ENV HOME=/home/user
 
+# --- persisted subscription credential dirs ----------------------------------
+# The per-sandbox PVC backs two paths (see kubernetes.py::_build_pod):
+# /home/user/workspace and /home/user/.persist -- everything else under
+# /home/user comes from this image layer and is fresh on every pod. `claude
+# /login` writes ~/.claude/.credentials.json + ~/.claude.json, and `codex
+# login` writes ~/.codex/auth.json; symlink those cred paths into the
+# persisted dir so a subscription login survives pod pause/resume instead of
+# being wiped when the pod is recreated. Symlinks (rather than mounting the
+# PVC over ~/.claude/~/.codex directly, or subPath-mounting the ~/.claude.json
+# file) because agents rewrite ~/.claude.json via atomic rename, which a
+# subPath file mount would not survive. Targets are created by the agents
+# themselves on first login; .persist starts empty.
+RUN mkdir -p /home/user/.persist \
+    && ln -s /home/user/.persist/claude /home/user/.claude \
+    && ln -s /home/user/.persist/claude.json /home/user/.claude.json \
+    && ln -s /home/user/.persist/codex /home/user/.codex \
+    && chown -R user:user /home/user/.persist \
+    && chown -h user:user /home/user/.claude /home/user/.claude.json /home/user/.codex
+
 # Idle by design: the control-plane server execs the runtime into this pod
 # (anyharness serve --require-bearer-auth --host 0.0.0.0 --port 8457). This
 # image must never start it itself.
