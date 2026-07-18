@@ -20,18 +20,14 @@ REPO_VERSION = (Path(__file__).resolve().parents[3] / "VERSION").read_text().str
 # The version pins reported by /meta, separate from the capabilities block.
 _VERSION_FIELDS = (
     "serverVersion",
-    "desktopVersion",
     "runtimeVersion",
     "workerVersion",
-    "minDesktopVersion",
 )
 
 _PIN_ENV_VARS = (
     "SERVER_VERSION",
-    "DESKTOP_VERSION",
     "RUNTIME_VERSION",
     "WORKER_VERSION",
-    "MIN_DESKTOP_VERSION",
     "DESKTOP_DOWNLOADS_BASE_URL",
 )
 
@@ -51,19 +47,15 @@ def _clear_pin_env(monkeypatch) -> None:  # type: ignore[no-untyped-def]
 def test_meta_reports_stamped_pins(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _clear_pin_env(monkeypatch)
     monkeypatch.setenv("SERVER_VERSION", "0.3.0")
-    monkeypatch.setenv("DESKTOP_VERSION", "0.3.2")
     monkeypatch.setenv("RUNTIME_VERSION", "0.3.1")
     monkeypatch.setenv("WORKER_VERSION", "0.3.4")
-    monkeypatch.setenv("MIN_DESKTOP_VERSION", "0.3.0")
 
     body = _client().get("/meta").json()
 
     assert {field: body[field] for field in _VERSION_FIELDS} == {
         "serverVersion": "0.3.0",
-        "desktopVersion": "0.3.2",
         "runtimeVersion": "0.3.1",
         "workerVersion": "0.3.4",
-        "minDesktopVersion": "0.3.0",
     }
     # The capability contract rides alongside the version pins.
     assert isinstance(body["capabilities"], dict)
@@ -82,18 +74,16 @@ def test_meta_shape_and_types_without_env(monkeypatch) -> None:  # type: ignore[
 
 # T1-SH-3 (specs/developing/testing/self-hosting.md): the /meta wire contract.
 #
-# `/meta` is the shape the desktop's connect-to-a-server dialog reads to render
+# `/meta` is the shape the web client's connect-to-a-server flow reads to render
 # its trust-confirmation screen ("Server version X"). A silent field rename or
-# reorder breaks every desktop that talks to a self-hosted server, and no other
+# reorder breaks every client that talks to a self-hosted server, and no other
 # test would notice. This golden test pins the exact field names AND their
 # order, both on the response model and on the live JSON, so a rename mechanically
 # fails here. Field-set membership is covered above; this is the rename guard.
 _META_GOLDEN_FIELDS = [
     "serverVersion",
-    "desktopVersion",
     "runtimeVersion",
     "workerVersion",
-    "minDesktopVersion",
     "capabilities",
 ]
 
@@ -116,10 +106,8 @@ def test_meta_pins_fall_back_to_server_version(monkeypatch) -> None:  # type: ig
 
     body = _client().get("/meta").json()
 
-    assert body["desktopVersion"] == "1.2.3"
     assert body["runtimeVersion"] == "1.2.3"
     assert body["workerVersion"] == "1.2.3"
-    assert body["minDesktopVersion"] == "1.2.3"
 
 
 # --- Capability contract (server/proliferate/server/meta.py) ------------------
@@ -454,58 +442,6 @@ def test_capabilities_local_dev_is_self_managed_posture() -> None:
     assert caps.webApp.available is False
     assert caps.support.kind == "none"
     assert caps.pricing.available is False
-
-
-def _stub_manifest_probe(monkeypatch, exists: bool) -> list[str]:  # type: ignore[no-untyped-def]
-    probed: list[str] = []
-
-    async def probe(url: str) -> bool:
-        probed.append(url)
-        return exists
-
-    monkeypatch.setattr(meta_module, "_versioned_manifest_exists", probe)
-    return probed
-
-
-def test_updater_redirects_302_to_versioned_manifest(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    _clear_pin_env(monkeypatch)
-    monkeypatch.setenv("DESKTOP_VERSION", "0.3.2")
-    _stub_manifest_probe(monkeypatch, exists=True)
-
-    response = _client().get("/desktop/updater/latest.json")
-
-    assert response.status_code == 302
-    assert response.headers["location"] == (
-        "https://downloads.proliferate.com/desktop/stable/0.3.2/latest.json"
-    )
-
-
-def test_updater_redirect_honors_downloads_base_override(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    _clear_pin_env(monkeypatch)
-    monkeypatch.setenv("DESKTOP_VERSION", "0.3.2")
-    monkeypatch.setenv("DESKTOP_DOWNLOADS_BASE_URL", "https://cdn.example.com/")
-    _stub_manifest_probe(monkeypatch, exists=True)
-
-    response = _client().get("/desktop/updater/latest.json")
-
-    assert response.status_code == 302
-    assert response.headers["location"] == (
-        "https://cdn.example.com/desktop/stable/0.3.2/latest.json"
-    )
-
-
-def test_updater_falls_back_to_flat_manifest_when_pin_unpublished(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    _clear_pin_env(monkeypatch)
-    monkeypatch.setenv("DESKTOP_VERSION", "0.3.2")
-    probed = _stub_manifest_probe(monkeypatch, exists=False)
-
-    response = _client().get("/desktop/updater/latest.json")
-
-    assert response.status_code == 302
-    assert response.headers["location"] == (
-        "https://downloads.proliferate.com/desktop/stable/latest.json"
-    )
-    assert probed == ["https://downloads.proliferate.com/desktop/stable/0.3.2/latest.json"]
 
 
 def test_manifest_probe_caches_results(monkeypatch) -> None:  # type: ignore[no-untyped-def]

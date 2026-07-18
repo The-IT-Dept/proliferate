@@ -632,23 +632,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/desktop/updater/latest.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Desktop Updater Latest */
-        get: operations["desktop_updater_latest_desktop_updater_latest_json_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/auth/password/register": {
         parameters: {
             query?: never;
@@ -5093,14 +5076,10 @@ export interface components {
         MetaResponse: {
             /** Serverversion */
             serverVersion: string;
-            /** Desktopversion */
-            desktopVersion: string;
             /** Runtimeversion */
             runtimeVersion: string;
             /** Workerversion */
             workerVersion: string;
-            /** Mindesktopversion */
-            minDesktopVersion: string;
             capabilities: components["schemas"]["ServerCapabilities"];
         };
         /** OAuthAvailabilityResponse */
@@ -8480,26 +8459,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaResponse"];
-                };
-            };
-        };
-    };
-    desktop_updater_latest_desktop_updater_latest_json_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };

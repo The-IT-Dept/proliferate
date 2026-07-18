@@ -2,10 +2,9 @@
 
 Every version the API reports is downstream of what the operator's server image
 was stamped with at build time. Release CI injects the concrete pins via env
-(``SERVER_VERSION``, ``DESKTOP_VERSION``, ``RUNTIME_VERSION``,
-``WORKER_VERSION``, ``MIN_DESKTOP_VERSION``), wired from the root ``VERSION``
-file and the desktop / runtime / worker package manifests through Docker build
-args.
+(``SERVER_VERSION``, ``RUNTIME_VERSION``, ``WORKER_VERSION``), wired from the
+root ``VERSION`` file and the runtime / worker package manifests through Docker
+build args.
 
 For local development (running from a source checkout, not the released image)
 the server version falls back to reading the repo ``VERSION`` file, then to a
@@ -52,11 +51,6 @@ def server_version() -> str:
     return _env("SERVER_VERSION") or _read_version_file() or _DEV_FALLBACK
 
 
-def desktop_version() -> str:
-    """The desktop version this server pins; falls back to the server version."""
-    return _env("DESKTOP_VERSION") or server_version()
-
-
 def runtime_version() -> str:
     """The runtime version this server pins; falls back to the server version."""
     return _env("RUNTIME_VERSION") or server_version()
@@ -98,12 +92,3 @@ def worker_version_pin() -> str | None:
     attempts — an unstamped deployment therefore pins nothing.
     """
     return _env("WORKER_VERSION")
-
-
-def min_desktop_version() -> str:
-    """The lowest desktop version this server accepts.
-
-    Defaults to the pinned desktop version (a conservative floor). Operators or
-    release CI can stamp an explicit lower floor via ``MIN_DESKTOP_VERSION``.
-    """
-    return _env("MIN_DESKTOP_VERSION") or desktop_version()

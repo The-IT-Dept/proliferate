@@ -1,21 +1,13 @@
-"""Public version metadata, capability contract, and desktop updater redirect.
+"""Public version metadata and capability contract.
 
-``GET /meta`` reports the versions this server pins so desktop, runtime, and
-operators all converge on the version the API controls, plus a ``capabilities``
-contract describing what this deployment actually offers. ``GET
-/desktop/updater/latest.json`` 302-redirects to the versioned updater manifest
-on the official downloads CDN.
+``GET /meta`` reports the versions this server pins so the web client, runtime,
+and operators all converge on the version the API controls, plus a
+``capabilities`` contract describing what this deployment actually offers.
 
-The server carries only a version string, never the manifest itself: manifests
-contain per-platform minisign signatures that are a desktop-release artifact,
-and the minisign pubkey baked into the app verifies those artifacts no matter
-which endpoint served the manifest. A self-hosted server can therefore choose
-the desktop version but can never ship an unofficial build.
-
-The ``capabilities`` block is the source of truth for what the desktop renders.
-The desktop must not infer Cloud/billing/gateway from mere reachability: a
+The ``capabilities`` block is the source of truth for what the client renders.
+The client must not infer Cloud/billing/gateway from mere reachability: a
 self-managed server declares only the capabilities its operator configured, so
-the desktop shows only those. Everything here is derived from operator config;
+the client shows only those. Everything here is derived from operator config;
 no secret material or per-secret presence is exposed, only product capability
 booleans and safe, user-facing destinations (support email, pricing/web URL).
 """
@@ -24,8 +16,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from proliferate.config import Settings, settings
@@ -43,15 +34,7 @@ from proliferate.constants.deployment import (
     VENDOR_PRICING_URL,
     VENDOR_SUPPORT_EMAIL,
 )
-from proliferate.integrations.desktop_downloads import (
-    downloads_base_url as _downloads_base_url,
-)
-from proliferate.integrations.desktop_downloads import (
-    versioned_manifest_exists as _versioned_manifest_exists,
-)
 from proliferate.server.version import (
-    desktop_version,
-    min_desktop_version,
     runtime_version,
     server_version,
     worker_version,
@@ -282,10 +265,8 @@ def build_server_capabilities(config: Settings) -> ServerCapabilities:
 
 class MetaResponse(BaseModel):
     serverVersion: str
-    desktopVersion: str
     runtimeVersion: str
     workerVersion: str
-    minDesktopVersion: str
     capabilities: ServerCapabilities
 
 
@@ -293,18 +274,7 @@ class MetaResponse(BaseModel):
 async def meta() -> MetaResponse:
     return MetaResponse(
         serverVersion=server_version(),
-        desktopVersion=desktop_version(),
         runtimeVersion=runtime_version(),
         workerVersion=worker_version(),
-        minDesktopVersion=min_desktop_version(),
         capabilities=build_server_capabilities(settings),
     )
-
-
-@router.get("/desktop/updater/latest.json")
-async def desktop_updater_latest() -> RedirectResponse:
-    base = _downloads_base_url()
-    target = f"{base}/desktop/stable/{desktop_version()}/latest.json"
-    if not await _versioned_manifest_exists(target):
-        target = f"{base}/desktop/stable/latest.json"
-    return RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
