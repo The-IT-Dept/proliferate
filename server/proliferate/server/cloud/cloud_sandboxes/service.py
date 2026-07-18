@@ -35,15 +35,19 @@ class _UserWithId(Protocol):
 
 
 def require_cloud_provisioning_configured() -> None:
-    """Fail cloud-provisioning requests with an actionable error when E2B is
-    half-configured (API key set, template missing).
+    """Fail cloud-provisioning requests with an actionable error when the
+    configured sandbox provider is half-configured (e.g. E2B API key set,
+    template missing).
 
     This is the request-time peer of the boot-time warning in ``main.py``: the
     control plane stays up for base features, but explicit cloud-provisioning
     intents return a specific 503 naming the missing requirement rather than
     booting the wrong E2B template or surfacing an opaque runtime failure.
+    Provider-aware via ``settings.sandbox_provisioning_config_error`` — a
+    normal Kubernetes deploy (whose settings all have usable defaults) never
+    raises here.
     """
-    config_error = settings.cloud_provisioning_config_error
+    config_error = settings.sandbox_provisioning_config_error
     if config_error is not None:
         raise CloudApiError(
             "e2b_template_not_configured",

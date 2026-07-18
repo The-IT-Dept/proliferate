@@ -450,6 +450,15 @@ class Settings(BaseSettings):
     e2b_list_price_usd_per_hour: str = "2.00"
     pro_compute_margin_multiplier: float = 1.5
 
+    # Selects which SandboxProvider implementation backs cloud workspaces.
+    # "e2b" (default) preserves all current behavior; "kubernetes" runs each
+    # cloud sandbox as a pod on the cluster via KubernetesSandboxProvider. See
+    # integrations/sandbox/factory.py for the selection wiring.
+    sandbox_provider: str = Field(
+        default="e2b",
+        validation_alias=AliasChoices("SANDBOX_PROVIDER", "PROLIFERATE_SANDBOX_PROVIDER"),
+    )
+
     # Kubernetes sandbox provider. Read by KubernetesSandboxProvider
     # (integrations/sandbox/kubernetes.py). Field names already uppercase to
     # KUBERNETES_SANDBOX_* env vars under the default (case-insensitive)
@@ -574,6 +583,38 @@ class Settings(BaseSettings):
         key_present = bool(self.e2b_api_key.strip())
         template_present = bool(self.e2b_template_name.strip())
         return key_present != template_present
+
+    @property
+    def sandbox_provisioning_configured(self) -> bool:
+        """True when the configured sandbox provider is ready to provision.
+
+        Provider-agnostic peer of ``cloud_provisioning_configured``: branches
+        on ``sandbox_provider`` so boot validators and the capability contract
+        don't require E2B when running against Kubernetes. Kubernetes has
+        defaults for every setting it reads (namespace/image/storage class),
+        so it is always considered configured.
+        """
+        if self.sandbox_provider == "kubernetes":
+            return True
+        return self.cloud_provisioning_configured
+
+    @property
+    def sandbox_provisioning_partially_configured(self) -> bool:
+        """Provider-agnostic peer of ``cloud_provisioning_partially_configured``.
+
+        Kubernetes has no partial-configuration state (every setting has a
+        usable default), so this is always False for it.
+        """
+        if self.sandbox_provider == "kubernetes":
+            return False
+        return self.cloud_provisioning_partially_configured
+
+    @property
+    def sandbox_provisioning_config_error(self) -> str | None:
+        """Provider-agnostic peer of ``cloud_provisioning_config_error``."""
+        if self.sandbox_provider == "kubernetes":
+            return None
+        return self.cloud_provisioning_config_error
 
     @property
     def single_org_mode(self) -> bool:

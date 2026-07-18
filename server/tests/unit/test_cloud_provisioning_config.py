@@ -16,6 +16,7 @@ from proliferate.config_defaults import DEFAULT_CORS_ALLOW_ORIGINS, ENV_FILES
 from proliferate.integrations.sandbox import e2b as e2b_runtime
 from proliferate.server.cloud.cloud_sandboxes import service as cloud_sandboxes_service
 from proliferate.server.cloud.errors import CloudApiError
+from proliferate.server.meta import build_server_capabilities
 
 
 def _settings(**overrides: object) -> Settings:
@@ -128,3 +129,108 @@ def test_e2b_template_name_raises_in_production_when_unset(
     with pytest.raises(e2b_runtime.E2BRuntimeError) as excinfo:
         provider._template_name()
     assert "E2B_TEMPLATE_NAME" in str(excinfo.value)
+
+
+# --- Provider-agnostic readiness (M2 Task 5) ---------------------------------
+#
+# Generalizes the E2B-only predicates above so a SANDBOX_PROVIDER=kubernetes
+# deployment reads as configured without any E2B env, while every existing
+# E2B case (above) is untouched and keeps passing.
+
+# Complete GitHub App runtime config, mirroring test_meta_endpoint.py's
+# _APP_COMPLETE: one entry per requirement group `github_app_configured` checks.
+_APP_COMPLETE: dict[str, object] = {
+    "github_app_id": "12345",
+    "github_app_slug": "acme-cloud",
+    "github_app_client_id": "Iv1.app-client",
+    "github_app_client_secret": "app-secret",
+    "github_app_webhook_secret": "hook-secret",
+    "github_app_private_key": "-----BEGIN RSA PRIVATE KEY-----",
+}
+
+
+def test_kubernetes_provider_is_configured_with_no_e2b_env() -> None:
+    settings = _settings(
+        debug=False,
+        e2b_api_key="",
+        e2b_template_name="",
+        SANDBOX_PROVIDER="kubernetes",
+    )
+    assert settings.sandbox_provider == "kubernetes"
+    assert settings.sandbox_provisioning_configured is True
+    assert settings.sandbox_provisioning_partially_configured is False
+    assert settings.sandbox_provisioning_config_error is None
+
+
+def test_e2b_provider_sandbox_provisioning_matches_cloud_provisioning() -> None:
+    # Default provider is "e2b"; the new provider-agnostic predicates must
+    # agree exactly with the existing E2B-specific ones (no behavior change).
+    configured = _settings(debug=False, e2b_api_key="e2b_key", e2b_template_name="tmpl")
+    assert configured.sandbox_provisioning_configured == configured.cloud_provisioning_configured
+    assert configured.sandbox_provisioning_configured is True
+
+    partial = _settings(debug=False, e2b_api_key="e2b_key", e2b_template_name="")
+    assert (
+        partial.sandbox_provisioning_partially_configured
+        == partial.cloud_provisioning_partially_configured
+    )
+    assert partial.sandbox_provisioning_partially_configured is True
+    assert partial.sandbox_provisioning_config_error == partial.cloud_provisioning_config_error
+
+
+def _capability_settings(**overrides: object) -> Settings:
+    """Settings tuned for build_server_capabilities, reset to a known base.
+
+    Mirrors test_meta_endpoint.py's _cfg(): every capability-relevant field is
+    pinned to a known value first (ambient env/.env must not leak in), then
+    overrides apply on top via direct attribute assignment so aliased fields
+    (like sandbox_provider) can be set by their plain field name.
+    """
+    cfg = _settings()
+    base: dict[str, object] = {
+        "telemetry_mode": "self_managed",
+        "cloud_billing_mode": "off",
+        "debug": False,
+        "sandbox_provider": "e2b",
+        "e2b_api_key": "",
+        "e2b_template_name": "",
+        "github_app_id": "",
+        "github_app_slug": "",
+        "github_app_client_id": "",
+        "github_app_client_secret": "",
+        "github_app_webhook_secret": "",
+        "github_app_private_key": "",
+        "github_app_private_key_path": "",
+    }
+    base.update(overrides)
+    for key, value in base.items():
+        setattr(cfg, key, value)
+    return cfg
+
+
+def test_managed_cloud_kubernetes_requires_github_app_configuration() -> None:
+    config = _capability_settings(sandbox_provider="kubernetes")
+
+    caps = build_server_capabilities(config)
+
+    assert caps.managedCloud.status == "operator_configuration_required"
+    assert caps.managedCloud.repositoryAuthority == "github_app"
+
+
+def test_managed_cloud_kubernetes_ready_with_full_github_app() -> None:
+    config = _capability_settings(sandbox_provider="kubernetes", **_APP_COMPLETE)
+
+    caps = build_server_capabilities(config)
+
+    assert caps.managedCloud.status == "ready"
+    assert caps.managedCloud.repositoryAuthority == "github_app"
+
+
+def test_managed_cloud_e2b_absent_stays_disabled() -> None:
+    # Existing E2B behavior, unchanged: no provisioning + no App -> disabled.
+    config = _capability_settings(sandbox_provider="e2b")
+
+    caps = build_server_capabilities(config)
+
+    assert caps.managedCloud.status == "disabled"
+    assert caps.managedCloud.repositoryAuthority is None
