@@ -204,7 +204,7 @@ async def handle_e2b_webhook(
         billing = await get_billing_snapshot_for_subject(billing_subject.id)
         if billing.billing_mode == BILLING_MODE_ENFORCE and billing.active_spend_hold:
             if event.sandbox_id:
-                provider = get_sandbox_provider("e2b")
+                provider = get_sandbox_provider(sandbox.e2b_template_ref)
                 await provider.pause_sandbox(event.sandbox_id)
             await close_usage_segment_for_sandbox(
                 sandbox_id=sandbox.id,
