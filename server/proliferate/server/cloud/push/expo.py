@@ -13,10 +13,37 @@ EXPO_PUSH_BATCH_SIZE = 100
 
 ExpoTicketStatus = Literal["ok", "error"]
 
-# The one per-ticket error code that is permanent: the token must never be
-# retried and the caller should disable it. Every other error code (rate
-# limiting, transient upstream trouble, etc.) is treated as retryable.
+# The one per-ticket error code that means the token itself is permanently
+# gone: the caller disables it and never sends to it again.
+# https://docs.expo.dev/push-notifications/sending-notifications/#individual-errors
 DEVICE_NOT_REGISTERED = "DeviceNotRegistered"
+
+# Expo's other documented per-ticket ``details.error`` codes that are also
+# permanent (retrying changes nothing — a payload/config problem, not
+# upstream trouble) but do NOT mean the token itself is invalid, so the token
+# stays enabled:
+#   - MessageTooBig: payload exceeded Expo's 4096-byte limit.
+#   - MismatchSenderId: FCM server key and google-services.json sender ID
+#     mismatch (a credentials-configuration problem).
+#   - InvalidCredentials: this app's standalone push credentials are invalid.
+#   - InvalidProviderToken: the APNs key/provisioning profile is invalid.
+# Source: https://docs.expo.dev/push-notifications/sending-notifications/#individual-errors
+_TERMINAL_ERROR_CODES = frozenset(
+    {
+        "MessageTooBig",
+        "MismatchSenderId",
+        "InvalidCredentials",
+        "InvalidProviderToken",
+    }
+)
+
+# The one per-ticket error code Expo documents as transient: real
+# backpressure, safe (and expected) to retry with backoff. Any code that is
+# NOT this, NOT ``DEVICE_NOT_REGISTERED``, and NOT in ``_TERMINAL_ERROR_CODES``
+# (including an absent/unrecognized code) is treated as terminal too — when
+# unsure whether a new/unknown Expo error code is safe to retry, the safe
+# default is to drop it rather than retry it forever.
+_TRANSIENT_ERROR_CODES = frozenset({"MessageRateExceeded"})
 
 
 @dataclass(frozen=True)
@@ -39,11 +66,39 @@ class ExpoPushResult:
         )
 
     @property
-    def has_transient_failures(self) -> bool:
-        return any(
-            ticket.status == "error" and ticket.error_code != DEVICE_NOT_REGISTERED
+    def transient_tokens(self) -> tuple[str, ...]:
+        """Tokens whose ticket reported a genuinely transient error.
+
+        The caller retries ONLY these — never a token that already got an
+        "ok" ticket, was disabled (``DEVICE_NOT_REGISTERED``), or hit a
+        terminal error (``terminal_tokens``).
+        """
+        return tuple(
+            ticket.token
             for ticket in self.tickets
+            if ticket.status == "error" and ticket.error_code in _TRANSIENT_ERROR_CODES
         )
+
+    @property
+    def terminal_tokens(self) -> tuple[str, ...]:
+        """Tokens whose ticket reported a permanent, non-disable error.
+
+        Retrying would never succeed (a payload or push-credentials problem,
+        or an unrecognized code — defaulted to terminal rather than retried
+        forever), but the token itself may still be good, so it is dropped
+        for this delivery without being disabled.
+        """
+        return tuple(
+            ticket.token
+            for ticket in self.tickets
+            if ticket.status == "error"
+            and ticket.error_code != DEVICE_NOT_REGISTERED
+            and ticket.error_code not in _TRANSIENT_ERROR_CODES
+        )
+
+    @property
+    def has_transient_failures(self) -> bool:
+        return bool(self.transient_tokens)
 
 
 class ExpoPushTransportError(Exception):

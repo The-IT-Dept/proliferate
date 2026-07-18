@@ -187,17 +187,20 @@ def test_workflow_tasks_retry_escaped_crashes_without_attempt_ceiling() -> None:
         assert task.max_retries is None
 
 
-def test_push_send_task_retries_transient_failures_without_attempt_ceiling() -> None:
-    # A transient per-token Expo failure (rate limiting, upstream trouble) must
-    # keep retrying rather than silently drop the push; DeviceNotRegistered is
-    # handled separately (the token is disabled, never retried).
+def test_push_send_task_retries_transient_failures_with_a_bounded_attempt_ceiling() -> None:
+    # A transient per-token Expo failure (rate limiting, upstream trouble)
+    # must retry with backoff, but — unlike the workflow tasks — a stale
+    # interaction push is worthless, so the retry count is bounded rather
+    # than unbounded (max_retries=None was the retry-storm bug: combined with
+    # the old whole-delivery-retries-on-any-transient-ticket behavior, a
+    # persistent per-token error retried every ~60s forever).
     from proliferate.background.celery_app import celery_app
+    from proliferate.background.tasks.push import PUSH_SEND_MAX_RETRIES
 
     task = celery_app.tasks[PUSH_SEND_TASK]
-    assert task.autoretry_for == (Exception,)
     assert task.retry_backoff is True
     assert task.retry_backoff_max == 60
-    assert task.max_retries is None
+    assert task.max_retries == PUSH_SEND_MAX_RETRIES == 5
 
 
 def test_celery_queue_selector_rejects_unknown_queue() -> None:
