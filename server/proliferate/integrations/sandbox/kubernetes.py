@@ -29,7 +29,6 @@ from proliferate.constants.sandbox.kubernetes import (
     K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS,
     K8S_DEFAULT_READY_TIMEOUT_SECONDS,
     K8S_DEFAULT_RUNTIME_USER,
-    K8S_HOME_VOLUME_NAME,
     K8S_READY_POLL_INTERVAL_SECONDS,
     K8S_RUN_AS_ID,
     K8S_RUNTIME_BINARY_PATH,
@@ -39,6 +38,7 @@ from proliferate.constants.sandbox.kubernetes import (
     K8S_SANDBOX_NAME_PREFIX,
     K8S_TEMPLATE_VERSION,
     K8S_USER_HOME,
+    K8S_WORKSPACE_VOLUME_NAME,
 )
 from proliferate.integrations.sandbox.base import (
     ProviderSandboxState,
@@ -403,7 +403,22 @@ class KubernetesSandboxProvider:
                 k8s.V1ContainerPort(name="runtime", container_port=K8S_RUNTIME_PORT),
             ],
             volume_mounts=[
-                k8s.V1VolumeMount(name=K8S_HOME_VOLUME_NAME, mount_path=K8S_USER_HOME),
+                # The PVC only backs the workspace subdirectory, not the whole
+                # home directory. The sandbox image bakes the anyharness
+                # binary, worker/supervisor, and pre-installed agents into
+                # /home/user (see sandbox/Dockerfile); those live in the image
+                # layer and are present on every fresh pod. Kubernetes does
+                # NOT copy image content into a PVC the way a Docker named
+                # volume would, so mounting the (empty, persistent) PVC at
+                # /home/user would mask that baked runtime entirely --
+                # /home/user/anyharness would not exist and connect would
+                # fail with ENOENT on every sandbox. Only the user's workspace
+                # (repo checkout) is stateful and needs to survive pause/
+                # resume (pod delete -> recreate on the same PVC); worker/
+                # runtime process state is ephemeral per-pod and
+                # re-established by the connect path's relaunch, consistent
+                # with `preserves_processes_on_resume=False`.
+                k8s.V1VolumeMount(name=K8S_WORKSPACE_VOLUME_NAME, mount_path=K8S_RUNTIME_WORKDIR),
             ],
             resources=k8s.V1ResourceRequirements(
                 requests={
@@ -425,7 +440,7 @@ class KubernetesSandboxProvider:
             ),
             "volumes": [
                 k8s.V1Volume(
-                    name=K8S_HOME_VOLUME_NAME,
+                    name=K8S_WORKSPACE_VOLUME_NAME,
                     persistent_volume_claim=k8s.V1PersistentVolumeClaimVolumeSource(
                         claim_name=name
                     ),

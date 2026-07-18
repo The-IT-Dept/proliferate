@@ -30,7 +30,10 @@ K8S_APP_LABEL_KEY = "app"
 
 # Pod internals.
 K8S_CONTAINER_NAME = "sandbox"
-K8S_HOME_VOLUME_NAME = "home"
+# Named "workspace" (not "home"): the PVC backs only /home/user/workspace,
+# not the whole home directory -- see the mount_path comment in
+# kubernetes.py::_build_pod for why.
+K8S_WORKSPACE_VOLUME_NAME = "workspace"
 K8S_RUN_AS_ID = 1000
 K8S_DEFAULT_RUNTIME_USER = "user"
 
