@@ -207,3 +207,107 @@ under `specs/**`. Cosmetic; batched last so earlier phases don't churn on it.
 
 Phase 0 → 1 → 2 → 3 → 4. Phases 1 and 4 are safe and mechanical; 2 and 3 are the
 real work and each ship behind their own verification + `au-syd-0` deploy.
+
+---
+
+## Phase 0 findings
+
+**Investigation date:** 2026-07-18. Read-only; no code changed.
+
+### How the WEB client mints auth tokens
+
+The web client (`apps/packages/product-client/src` + `apps/web`) authenticates via
+**cookie sessions through `auth/identity`**, not via the desktop bearer flow. The
+web login/token surface is `server/proliferate/auth/identity/api.py`:
+
+- `POST /auth/web/password/login` — email/password; sets an httpOnly refresh
+  cookie (`WEB_REFRESH_COOKIE`) + a readable CSRF cookie via `_set_web_session_cookies`.
+- `POST /auth/web/token` — exchange an OAuth auth code (`exchange_auth_code`) →
+  cookie session.
+- `POST /auth/web/session/{bootstrap,refresh,logout}` — cookie-based session
+  lifecycle (refresh guarded by CSRF cookie/header).
+- OAuth start/callback via `POST /auth/{surface}/{provider}/start` +
+  `GET /auth/{surface}/{provider}/callback` with `surface="web"`.
+
+`auth_session_response(..., include_refresh_token=False)` returns a short-lived
+bearer **access token** in the body (the browser sends it as `Authorization:
+Bearer` on API calls) while the refresh token lives only in the httpOnly cookie.
+**The web client never calls `/auth/desktop/token` or `/auth/desktop/refresh`.**
+
+### Which `/auth/desktop/*` endpoints the WEB client actually calls
+
+Grepping `apps/packages/product-client/src` + `apps/web` (excluding `dist/`), the
+web client calls exactly **two** `/auth/desktop/*` endpoints, both **public,
+unauthenticated capability probes** (no PKCE verifier / token / session):
+
+- `GET /auth/desktop/methods` — via `getDesktopAuthMethods()` in
+  `lib/access/cloud/auth-probes.ts`; consumed by `hooks/access/cloud/auth/use-auth-methods.ts`
+  and `hooks/organizations/workflows/use-organization-join-invitation-flow.ts`.
+- `GET /auth/desktop/github/availability` — via `getGitHubDesktopAuthAvailability()`
+  in the same file; consumed by `hooks/access/cloud/auth/use-github-auth-availability.ts`.
+
+(The related `discoverDesktopSso()` probe hits `/auth/sso/discover`, which lives in
+`auth/sso`, **not** `auth/desktop`.)
+
+Confirmed **no surviving non-web client needs `/token`+`/refresh`**:
+- `apps/mobile` has zero `/auth/desktop/*` references — mobile uses `/auth/mobile/*`
+  (`/auth/mobile/password/login`, `/auth/mobile/token`, `/auth/mobile/session/refresh`).
+- There is no CLI package.
+- The only `/auth/desktop/token|refresh|poll|password/login` callers outside the
+  (Phase-1-deleted) `apps/desktop/src` are `server/tests/**` and `tests/{intent,release}/**`
+  fixtures, plus the generated `cloud/sdk/src/generated/openapi.ts`.
+
+### KEEP / DELETE decision for `server/proliferate/auth/desktop/`
+
+Router prefix `/desktop` mounted under `/auth` → full paths below. Decision
+executed in **Phase 2** (Phase 0 is decision-only).
+
+| Endpoint | Handler | Decision | Why |
+|---|---|---|---|
+| `GET /auth/desktop/methods` | `desktop_auth_methods` | **KEEP** | Live web login probe (`use-auth-methods`, join-invitation flow). Public. |
+| `GET /auth/desktop/github/availability` | `github_availability` | **KEEP** | Live web login probe (`use-github-auth-availability`). Public. |
+| `POST /auth/desktop/password/login` | `desktop_password_login` | **DELETE** | Web uses `/auth/web/password/login`. Only the desktop app + bearer test fixtures use it. |
+| `POST /auth/desktop/authorize` | `create_desktop_auth_code` | **DELETE** | Debug-only PKCE code creation; desktop-only. |
+| `GET /auth/desktop/github/authorize` | `authorize_github_desktop` | **DELETE** | Desktop browser-OAuth start; desktop-only. |
+| `GET /auth/desktop/github/callback` | `github_desktop_callback` | **DELETE** | Desktop deep-link OAuth callback (uses `pages.py` handoff); desktop-only. |
+| `POST /auth/desktop/poll` | `poll_desktop_auth` | **DELETE** | Desktop PKCE poll; desktop-only. |
+| `POST /auth/desktop/token` | `exchange_token` | **DELETE** | Desktop PKCE→JWT exchange; desktop-only. Web uses cookie session. |
+| `POST /auth/desktop/refresh` | `refresh_access_token` | **DELETE** | Desktop bearer refresh; desktop-only. Web=`/auth/web/session/refresh`, mobile=`/auth/mobile/session/refresh`. |
+
+**No rename.** Spec allowed "keep-and-optionally-rename." I recommend keeping the
+two survivors at their current paths (`/auth/desktop/methods`,
+`/auth/desktop/github/availability`) — renaming needs a coordinated client+server
+change with no functional benefit, and the operating rule is to make the safe,
+green-preserving choice. An optional future rename to `/auth/methods` +
+`/auth/github/availability` is deferred/out of scope.
+
+**Supporting files** (executed in Phase 2, not Phase 0):
+- `pages.py` — DELETE (only the desktop github callback uses it).
+- `service.py` / `models.py` — trim to the survivors: **keep** `github_oauth_enabled()`
+  (used by both KEEP endpoints; standalone `settings` read) and the response models
+  `AuthMethodsResponse` / `OAuthAvailabilityResponse`. Delete the PKCE/token/poll/
+  redirect/handoff orchestration.
+- Before deleting `constants/auth.py` desktop constants, verify `GITHUB_OAUTH_SCOPES`
+  is not shared by the identity/sso GitHub flows (keep if shared).
+
+### Phase 2 contingencies flagged by this investigation (do together with the deletes)
+
+1. **`server/proliferate/auth/jwt.py:17`** — `BearerTransport(tokenUrl="/auth/desktop/token")`.
+   This is OpenAPI/Swagger "authorize" **metadata only** (it does not create the
+   endpoint, and bearer auth validation is unaffected), but deleting `/auth/desktop/token`
+   leaves it pointing at a dead path. Repoint to a surviving token endpoint (e.g.
+   `/auth/mobile/token`) when `/token` is removed.
+2. **Bearer-login test fixtures** — `tests/release/src/fixtures/*` (`authenticated-actor`,
+   `invited-actor`, `selfhost-actor`) and `tests/intent/**` log in via
+   `POST /auth/desktop/password/login` to obtain **bearer** tokens. Migrate these to
+   `POST /auth/mobile/password/login` (same `AuthSessionResponse` with access+refresh)
+   in the same change that deletes `/auth/desktop/password/login`.
+3. **Server auth tests** — `server/tests/integration/test_auth_flow.py`,
+   `test_desktop_auth_customerio.py`, `test_desktop_auth_gate.py`,
+   `test_desktop_password_auth.py`, `unit/test_api_path_prefix.py`,
+   `unit/auth/test_desktop_customerio.py`, and helpers `tests/helpers/desktop_auth.py`,
+   `tests/e2e/cloud/helpers/auth.py` assert the deleted desktop endpoints; update/remove
+   in lockstep with the Phase 2 deletions.
+
+**Net:** the web login path is fully preserved by keeping the two public probes.
+Everything else under `auth/desktop/` is desktop-app-only and safe to delete in Phase 2.
