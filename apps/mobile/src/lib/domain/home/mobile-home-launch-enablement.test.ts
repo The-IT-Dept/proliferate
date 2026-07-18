@@ -113,7 +113,7 @@ describe("deriveMobileHomeLaunchEnablement", () => {
     });
   });
 
-  it("target/readiness checks take priority over the harness-availability reason", () => {
+  it("still surfaces the target reason when harness is also unavailable", () => {
     expect(
       deriveMobileHomeLaunchEnablement({
         ...baseInput,
@@ -126,17 +126,22 @@ describe("deriveMobileHomeLaunchEnablement", () => {
     });
   });
 
-  it("blocks on harness unavailability once repo/branch/readiness are all resolved", () => {
-    expect(
-      deriveMobileHomeLaunchEnablement({
-        ...baseInput,
-        harnessUnavailableReason: "Models are unavailable right now. Try again in a moment.",
-      }),
-    ).toEqual({
-      canSubmit: false,
-      disabledReason: "Models are unavailable right now. Try again in a moment.",
-    });
-  });
+  it(
+    "blocks canSubmit on harness unavailability once repo/branch/readiness are resolved, " +
+      "but leaves disabledReason null — the harness message is its own persistent notice " +
+      "on web (modelAvailabilityNotice), never folded into the draft-gated target reason",
+    () => {
+      expect(
+        deriveMobileHomeLaunchEnablement({
+          ...baseInput,
+          harnessUnavailableReason: "Models are unavailable right now. Try again in a moment.",
+        }),
+      ).toEqual({
+        canSubmit: false,
+        disabledReason: null,
+      });
+    },
+  );
 
   it("blocks while a create request is already in flight", () => {
     expect(

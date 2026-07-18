@@ -178,11 +178,20 @@ export function MobileHomeScreen({
           }}
         />
 
-        {launchActions.status || launchActions.error || launchEnablement.disabledReason ? (
-          <Text style={[styles.launchNote, launchActions.error && styles.launchError]}>
-            {launchActions.error ?? launchActions.status ?? launchEnablement.disabledReason}
-          </Text>
-        ) : null}
+        {launchActions.status
+          || launchActions.error
+          || launchEnablement.disabledReason
+          || launchModel.harnessAvailability.message ? (
+            <Text style={[styles.launchNote, launchActions.error && styles.launchError]}>
+              {launchActions.error
+                ?? launchActions.status
+                ?? launchEnablement.disabledReason
+                // Model/harness availability (web: modelAvailabilityNotice) is a
+                // persistent notice — shown regardless of draft text, unlike the
+                // repo/branch target reason above it.
+                ?? launchModel.harnessAvailability.message}
+            </Text>
+          ) : null}
 
         <MobileHomeRecentSection items={recentItems} onOpenChat={onOpenChat} />
       </ScrollView>

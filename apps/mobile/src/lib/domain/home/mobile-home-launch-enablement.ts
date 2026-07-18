@@ -60,7 +60,12 @@ export interface MobileHomeLaunchEnablementInput extends MobileHomeTargetReadine
   readinessBlockedReason: string | null;
   /**
    * Resolved harness-availability message (`resolveCloudHarnessAvailability`),
-   * or null when at least one agent kind is launchable.
+   * or null when at least one agent kind is launchable. Gates `canSubmit`
+   * like everything else here, but — matching the web composer, where this
+   * is `modelAvailabilityNotice`, a persistent banner wholly separate from
+   * `submitDisabledReason` — it is deliberately never surfaced through
+   * `disabledReason`. Callers show it unconditionally alongside this
+   * derivation's output, not gated on draft text.
    */
   harnessUnavailableReason: string | null;
   /** A create-cloud-workspace mutation is already in flight. */
@@ -70,9 +75,11 @@ export interface MobileHomeLaunchEnablementInput extends MobileHomeTargetReadine
 export interface MobileHomeLaunchEnablement {
   canSubmit: boolean;
   /**
-   * The reason submit is disabled, for display next to the composer — null
-   * whenever the draft itself is empty (an empty draft needs no explanation)
-   * or when submit is actually enabled.
+   * The repo/branch/readiness reason submit is disabled, for display next to
+   * the composer — null whenever the draft itself is empty (an empty draft
+   * needs no explanation, matching the web composer's `submitDisabledReason`),
+   * when submit is actually enabled, or when the only blocker is harness
+   * availability (see `harnessUnavailableReason` — shown separately).
    */
   disabledReason: string | null;
 }
@@ -87,12 +94,14 @@ export function deriveMobileHomeLaunchEnablement(
   input: MobileHomeLaunchEnablementInput,
 ): MobileHomeLaunchEnablement {
   const hasDraft = input.draft.trim().length > 0;
-  const blockingReason = resolveMobileHomeTargetDisabledReason(input)
-    ?? input.readinessBlockedReason
-    ?? input.harnessUnavailableReason;
+  const targetOrReadinessReason = resolveMobileHomeTargetDisabledReason(input)
+    ?? input.readinessBlockedReason;
 
   return {
-    canSubmit: hasDraft && blockingReason === null && !input.submitting,
-    disabledReason: hasDraft ? blockingReason : null,
+    canSubmit: hasDraft
+      && targetOrReadinessReason === null
+      && input.harnessUnavailableReason === null
+      && !input.submitting,
+    disabledReason: hasDraft ? targetOrReadinessReason : null,
   };
 }
