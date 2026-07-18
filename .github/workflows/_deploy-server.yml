@@ -268,13 +268,10 @@ jobs:
             exit 1
           fi
           canonical_version="$server_version"
-          desktop_version="$(jq -r '.version' apps/desktop/package.json)"
           {
             echo "server_version=${canonical_version}"
-            echo "desktop_version=${desktop_version}"
             echo "runtime_version=${canonical_version}"
             echo "worker_version=${canonical_version}"
-            echo "min_desktop_version=${desktop_version}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push server image
@@ -289,10 +286,8 @@ jobs:
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_SERVER_REPOSITORY }}:${{ inputs.environment }}-latest
           build-args: |
             SERVER_VERSION=${{ steps.pins.outputs.server_version }}
-            DESKTOP_VERSION=${{ steps.pins.outputs.desktop_version }}
             RUNTIME_VERSION=${{ steps.pins.outputs.runtime_version }}
             WORKER_VERSION=${{ steps.pins.outputs.worker_version }}
-            MIN_DESKTOP_VERSION=${{ steps.pins.outputs.min_desktop_version }}
 
       # Resolve the IMMUTABLE digest reference for the image just pushed. The
       # mutable `repo:shortsha` tag can be re-pointed at a different image after

@@ -102,19 +102,15 @@ RUN uv pip install --system --no-cache .
 COPY --from=web-builder /build/apps/web/dist /app/web-dist
 
 # Version pins the API reports via /health and /meta. Release CI stamps these
-# from the root VERSION file and the desktop/runtime/worker package manifests;
+# from the root VERSION file and the runtime/worker package manifests;
 # a plain `docker build` with no args falls back to the copied VERSION file
 # above.
 ARG SERVER_VERSION=""
-ARG DESKTOP_VERSION=""
 ARG RUNTIME_VERSION=""
 ARG WORKER_VERSION=""
-ARG MIN_DESKTOP_VERSION=""
 ENV SERVER_VERSION=${SERVER_VERSION} \
-    DESKTOP_VERSION=${DESKTOP_VERSION} \
     RUNTIME_VERSION=${RUNTIME_VERSION} \
-    WORKER_VERSION=${WORKER_VERSION} \
-    MIN_DESKTOP_VERSION=${MIN_DESKTOP_VERSION}
+    WORKER_VERSION=${WORKER_VERSION}
 
 EXPOSE 8000
 
