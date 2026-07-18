@@ -33,7 +33,13 @@ export function CliDetails({
     });
   }
 
-  if (surface === "cloud") {
+  // Cloud renders the SAME login flow as local (below) once a cloud sandbox
+  // connection exists — the CLI-login device-code flow runs as a real PTY
+  // inside that sandbox, streamed through the control-plane's AnyHarness
+  // gateway proxy (loginWorkflow.runtimeConnection, surface-resolved by
+  // useAgentLoginTerminalWorkflow). Without a connection there is nowhere to
+  // run the login, so fall back to the same "nothing to do here yet" copy.
+  if (surface === "cloud" && !loginWorkflow.connectionAvailable) {
     return (
       <HarnessPanelBlock variant={variant} title={HARNESS_PANE_COPY.detailsCli}>
         <p className="py-3 text-sm text-muted-foreground">
@@ -131,6 +137,7 @@ export function CliDetails({
             session={loginSession}
             baseUrl={loginWorkflow.runtimeConnection.baseUrl}
             authToken={loginWorkflow.runtimeConnection.authToken}
+            webSocketAuthTransport={loginWorkflow.runtimeConnection.webSocketAuthTransport}
             onClose={(kind) => {
               void loginWorkflow.closeAuthTerminal(kind);
             }}

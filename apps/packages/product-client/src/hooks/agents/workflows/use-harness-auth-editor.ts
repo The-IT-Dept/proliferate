@@ -116,7 +116,7 @@ export function useHarnessAuthEditor(
   const apiKeysQuery = useAgentApiKeys(authReady);
   const putSelections = usePutAuthSelections();
   const { agentsByKind } = useAgentCatalog();
-  const loginWorkflow = useAgentLoginTerminalWorkflow();
+  const loginWorkflow = useAgentLoginTerminalWorkflow(surface);
 
   // Local-authoritative editor: seeded once per (harness, surface) scope, then
   // every edit PUTs the full desired source list (contract §5). We never reseed
@@ -146,6 +146,15 @@ export function useHarnessAuthEditor(
     lastPutSigRef.current = JSON.stringify(buildDesiredSources(harnessKind, derived));
   }, [selections, scopeKey, harnessKind, surface]);
 
+  // KNOWN LIMITATION: always the LOCAL desktop runtime's agent (useAgentCatalog
+  // is never surface-aware), including on the cloud surface. `supportsLogin` is
+  // a static per-kind registry flag so it's fine either way, but
+  // `cliAuthState`/readiness reflect THIS MACHINE's credentials, not the cloud
+  // sandbox's — CliDetails' cloud copy can be wrong (e.g. "Authenticated" while
+  // the cloud sandbox itself was never logged in). Fixing this needs a
+  // cloud-scoped agent catalog analogous to useWorkspaceAgentCatalog, which is
+  // out of scope here; loginWorkflow.connectionAvailable/runtimeConnection
+  // (surface-aware) are what actually gate and drive the cloud login terminal.
   const localAgent = agentsByKind.get(harnessKind);
   const loginSession = loginWorkflow.sessionsByKind[harnessKind];
 

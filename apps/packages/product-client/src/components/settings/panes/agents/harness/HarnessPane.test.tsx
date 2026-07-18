@@ -69,6 +69,11 @@ const state = vi.hoisted(() => ({
     errorMessage: string | null;
     isStarting: boolean;
   }>,
+  // Mirrors useAgentLoginTerminalWorkflow's surface-resolved connection gate
+  // (local: AnyHarness runtime health; cloud: a resolved cloud sandbox
+  // connection). Defaults true so existing local-surface assertions are
+  // unaffected; cloud-connection tests toggle it explicitly.
+  loginConnectionAvailable: true,
   gatewayModels: {
     data: undefined as
       | {
@@ -241,6 +246,7 @@ vi.mock("#product/hooks/agents/workflows/use-agent-login-terminal-workflow", () 
   useAgentLoginTerminalWorkflow: () => ({
     sessionsByKind: state.loginSessions,
     runtimeConnection: { baseUrl: "http://127.0.0.1:8457", authToken: undefined },
+    connectionAvailable: state.loginConnectionAvailable,
     openAuthTerminal,
     closeAuthTerminal,
     handleTerminalExit,
@@ -301,6 +307,7 @@ afterEach(() => {
   state.catalog.isLoading = false;
   state.agentsByKind = new Map();
   state.loginSessions = {};
+  state.loginConnectionAvailable = true;
   state.gatewayModels.data = undefined;
   state.gatewayModels.isLoading = false;
   state.launchOptions.data = undefined;
@@ -707,6 +714,47 @@ describe("HarnessPane authentication", () => {
       expect.objectContaining({ kind: "claude" }),
       { restart: false },
     );
+  });
+
+  it("offers Run login on the cloud surface when a cloud sandbox connection is available", () => {
+    state.agentSurface = "cloud";
+    state.agentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "login_required",
+        supportsLogin: true,
+      },
+    ]]);
+    renderPane("claude");
+
+    fireEvent.click(screen.getByRole("button", { name: "Authenticate" }));
+
+    expect(openAuthTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "claude" }),
+      { restart: false },
+    );
+  });
+
+  it("shows a not-connected message on the cloud surface with no cloud sandbox connection", () => {
+    state.agentSurface = "cloud";
+    state.loginConnectionAvailable = false;
+    state.agentsByKind = new Map([[
+      "claude",
+      {
+        kind: "claude",
+        displayName: "Claude Code",
+        readiness: "login_required",
+        supportsLogin: true,
+      },
+    ]]);
+    renderPane("claude");
+
+    expect(screen.queryByRole("button", { name: "Authenticate" })).toBeNull();
+    expect(
+      screen.queryByText(/No cloud sandbox is connected/),
+    ).not.toBeNull();
   });
 
   it("asks the user to sign in when signed out", () => {

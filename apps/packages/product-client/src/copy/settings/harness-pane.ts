@@ -53,7 +53,10 @@ export const HARNESS_PANE_COPY = {
   cliAuthenticated: "Authenticated",
   // Native == the implicit empty state (contract §7): zero enabled sources.
   nativeStateLocal: "No auth configured — the CLI's own login is used.",
-  nativeStateCloud: "No auth configured — cloud runs stay disabled for this harness.",
+  // Shown only while no cloud sandbox connection is available (loginWorkflow.
+  // connectionAvailable); once connected, cloud renders the same CLI-login
+  // flow as local.
+  nativeStateCloud: "No cloud sandbox is connected yet — CLI login will be available once one is.",
   cliAlwaysActive: "Native logins always apply alongside other sources.",
   cursorNativeDescription: (displayName: string) =>
     `${displayName} authenticates with its own sign-in. There is nothing to configure here.`,
