@@ -15,7 +15,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "dark",
-  newArchEnabled: true,
+  // New Architecture (Fabric) is mandatory and always-on as of SDK 55; the
+  // `newArchEnabled` opt-in config key was removed.
   assetBundlePatterns: ["**/*"],
   splash: {
     image: "./assets/splash-icon.png",
@@ -39,7 +40,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#181818",
     },
-    edgeToEdgeEnabled: true,
+    // edge-to-edge is always-on as of SDK 55 (the `edgeToEdgeEnabled` config key
+    // was removed); no explicit opt-in is needed.
     predictiveBackGestureEnabled: false,
     intentFilters: [
       {
@@ -58,6 +60,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     "expo-apple-authentication",
+    "expo-localization",
     "expo-secure-store",
     [
       "expo-splash-screen",

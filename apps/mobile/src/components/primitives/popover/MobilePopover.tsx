@@ -119,7 +119,9 @@ export function MobilePopover({
               <BlurView
                 intensity={Platform.OS === "android" ? 32 : 60}
                 tint={Platform.OS === "ios" ? "systemUltraThinMaterialDark" : "dark"}
-                experimentalBlurMethod="dimezisBlurView"
+                // `blurMethod` replaces the deprecated `experimentalBlurMethod`
+                // (SDK 55). Android-only; iOS blurs the backdrop natively.
+                blurMethod="dimezisBlurView"
                 style={styles.cardSurface}
               >
                 <View style={styles.cardOverlay} pointerEvents="box-none">
