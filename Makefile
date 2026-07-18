@@ -37,8 +37,6 @@ LOCAL_CODEX_ACP ?= $(HOME)/codex-acp/target/debug/codex-acp
 DEV_ANYHARNESS_TARGET_DIR ?= target/runtime-local
 CLOUD_SSH_WORKER_API_PORT ?= 8044
 CLOUD_SSH_WORKER_DB ?= proliferate_dev_ssh_worker_smoke
-DESKTOP_RELEASE_WORKFLOW ?= Release Desktop
-DESKTOP_RELEASE_REF ?= $(shell git branch --show-current 2>/dev/null)
 LANE ?= local
 DESKTOP ?= web
 AGENTS ?= all
@@ -46,8 +44,6 @@ SCENARIOS ?= all
 BEHAVIOR ?= diagnostic
 DRY_RUN ?=
 FILE_ISSUES ?=
-DESKTOP_RELEASE_TARGET_OS ?= macos
-DESKTOP_RELEASE_TAG ?= desktop-v$(shell node -p "require('./apps/desktop/package.json').version" 2>/dev/null)
 SERVER_ENV_SOURCE = set -a; \
 	[ ! -f .env ] || . .env; \
 	[ ! -f .env.local ] || . .env.local; \
@@ -107,14 +103,13 @@ $(error PROFILE is required. Example: make dev PROFILE=main)
 endif
 endif
 
-.PHONY: catalog-view catalog-pin catalog-update setup run dev dev-init dev-list dev-local dev-desktop dev-runtime dev-server dev-mobile-auth dev-mobile-tunnel dev-web-auth seed-sso server-db-up server-db-wait \
+.PHONY: catalog-view catalog-pin catalog-update setup run dev dev-init dev-list dev-runtime dev-server dev-mobile-auth dev-mobile-tunnel dev-web-auth seed-sso server-db-up server-db-wait \
         server-db-down server-db-ready server-redis-up server-redis-wait server-redis-down server-redis-ready \
         server-background-up server-background-logs server-background-down \
         server-litellm-up server-litellm-wait server-litellm-down db db-local db-ah server-migrate serve install \
         check check-max-lines check-server-boundaries test test-server fmt clippy \
         dev-automation-worker \
-        sdk-generate sdk-build sdk-react-build cloud-sdk-build cloud-sdk-react-build shared-build dev-artifacts-ready build-rust runtime-build web-build desktop-build build-frontend build rebuild \
-        desktop-test-build release-desktop-dry-run release-desktop-draft \
+        sdk-generate sdk-build sdk-react-build cloud-sdk-build cloud-sdk-react-build shared-build dev-artifacts-ready build-rust runtime-build web-build build-frontend build rebuild \
         test-agent-spec test-agent-runtime-local test-agent-local-fast test-agent-local \
         test-agent-runtime-cloud-e2b \
         cloud-runtime-build publish-cloud-template-env-local \
@@ -122,7 +117,6 @@ endif
         test-cloud-e2b test-cloud-all test-cloud-webhooks \
         cloud-openapi cloud-client-generate \
         stripe-setup-test \
-        stage-sidecar \
         prod-service prod-taskdef prod-tasks prod-task prod-logs prod-secret-keys \
         prod-db-url prod-sql prod-psql prod-rds \
         db-migrate-up db-migrate-down \
@@ -312,13 +306,11 @@ run: dev-artifacts-ready
 		stripe listen --events "$(STRIPE_SNAPSHOT_EVENTS)" --forward-to "$$STRIPE_FORWARD_TO" & \
 	fi; \
 	runtime_bin="$${ANYHARNESS_DEV_RUNTIME_BIN:-$(DEV_ANYHARNESS_TARGET_DIR)/debug/anyharness}"; \
-	echo "Starting profile $$PROLIFERATE_DEV_PROFILE: runtime :$$ANYHARNESS_PORT, backend :$$PROLIFERATE_API_PORT, desktop :$$PROLIFERATE_WEB_PORT, web :$$PROLIFERATE_HOSTED_WEB_PORT, mobile web :$$PROLIFERATE_MOBILE_WEB_PORT"; \
+	echo "Starting profile $$PROLIFERATE_DEV_PROFILE: runtime :$$ANYHARNESS_PORT, backend :$$PROLIFERATE_API_PORT, web :$$PROLIFERATE_HOSTED_WEB_PORT, mobile web :$$PROLIFERATE_MOBILE_WEB_PORT"; \
 	RUST_LOG=info ANYHARNESS_DEV_CORS=1 "$$runtime_bin" serve --port "$$ANYHARNESS_PORT" --runtime-home "$$ANYHARNESS_RUNTIME_HOME" & \
 	(cd server && .venv/bin/uvicorn proliferate.main:app --reload --host 127.0.0.1 --port "$$PROLIFERATE_API_PORT") & \
 	echo "Starting hosted web app..."; \
-	(cd apps/web && VITE_PROLIFERATE_API_BASE_URL="$$API_BASE_URL" VITE_PROLIFERATE_DEV_TOKEN_LOGIN="$${VITE_PROLIFERATE_DEV_TOKEN_LOGIN:-true}" pnpm dev --host 127.0.0.1 --port "$$PROLIFERATE_HOSTED_WEB_PORT" --strictPort) & \
-	sleep 2; \
-	(cd apps/desktop && pnpm tauri dev --runner "$$(dirname "$$PROLIFERATE_DEV_HOME")/tauri-runner.sh" --config "$$(dirname "$$PROLIFERATE_DEV_HOME")/tauri.dev.json")
+	(cd apps/web && VITE_PROLIFERATE_API_BASE_URL="$$API_BASE_URL" VITE_PROLIFERATE_DEV_TOKEN_LOGIN="$${VITE_PROLIFERATE_DEV_TOKEN_LOGIN:-true}" pnpm dev --host 127.0.0.1 --port "$$PROLIFERATE_HOSTED_WEB_PORT" --strictPort)
 
 setup:
 	@if [ -z "$(PROFILE)" ]; then \
@@ -352,18 +344,7 @@ dev-init: setup
 dev-list:
 	@node scripts/dev.mjs list
 
-dev-local: export PROLIFERATE_DEV := 1
-dev-local: sdk-build
-	@echo "Starting desktop app with the bundled AnyHarness sidecar and no control plane..."
-	cd apps/desktop && pnpm tauri dev --config src-tauri/tauri.dev.json
-
 # --- Individual dev targets ---
-
-dev-desktop: export ANYHARNESS_DEV_URL := http://127.0.0.1:8457
-dev-desktop: export VITE_ANYHARNESS_DEV_URL := http://127.0.0.1:8457
-dev-desktop: export PROLIFERATE_DEV := 1
-dev-desktop:
-	cd apps/desktop && pnpm tauri dev --config src-tauri/tauri.dev.json
 
 dev-runtime: export ANYHARNESS_DEV_CORS := 1
 dev-runtime: export PROLIFERATE_DEV := 1
@@ -572,59 +553,6 @@ db-local:
 
 db-ah:
 	@sqlite3 -cmd ".headers on" -cmd ".mode column" $(HOME)/.proliferate-local/anyharness/db.sqlite
-
-# --- Release helpers ---
-
-# Build a TEST-FLAVOR desktop app whose auto-updater points at a local manifest
-# server (UPDATER_URL) and trusts a throwaway key. For the tier-4 upgrade test.
-# The shipped tauri.conf.json is untouched -- a gitignored overlay is merged via
-# `tauri build --config`. See specs/developing/testing/desktop-update-testing.md.
-#   make desktop-test-build UPDATER_URL=http://127.0.0.1:8787/latest.json
-desktop-test-build:
-	@test -n "$(UPDATER_URL)" || { echo "UPDATER_URL is required. Example: make desktop-test-build UPDATER_URL=http://127.0.0.1:8787/latest.json"; exit 1; }
-	UPDATER_URL="$(UPDATER_URL)" UPDATER_PUBKEY="$(UPDATER_PUBKEY)" TARGET="$(TARGET)" BUNDLES="$(BUNDLES)" \
-		bash apps/desktop/scripts/build-updater-test.sh
-
-release-desktop-dry-run:
-	@set -e; \
-	command -v gh >/dev/null 2>&1 || { echo "GitHub CLI is required: brew install gh"; exit 1; }; \
-	ref="$(DESKTOP_RELEASE_REF)"; \
-	if [ -z "$$ref" ]; then \
-		echo "DESKTOP_RELEASE_REF is required. Example: make release-desktop-dry-run DESKTOP_RELEASE_REF=feat/my-branch"; \
-		exit 1; \
-	fi; \
-	echo "Triggering $(DESKTOP_RELEASE_WORKFLOW) build dry run on $$ref..."; \
-	gh workflow run "$(DESKTOP_RELEASE_WORKFLOW)" \
-		--ref "$$ref" \
-		-f dry_run=true \
-		-f target_os="$(DESKTOP_RELEASE_TARGET_OS)"; \
-	echo ""; \
-	echo "Next:"; \
-	echo "  gh run list --workflow \"$(DESKTOP_RELEASE_WORKFLOW)\" --limit 5"; \
-	echo "  gh run watch <RUN_ID>"
-
-release-desktop-draft:
-	@set -e; \
-	command -v gh >/dev/null 2>&1 || { echo "GitHub CLI is required: brew install gh"; exit 1; }; \
-	tag="$(DESKTOP_RELEASE_TAG)"; \
-	if [ -z "$$tag" ] || [ "$$tag" = "desktop-v" ]; then \
-		echo "DESKTOP_RELEASE_TAG is required. Example: make release-desktop-draft DESKTOP_RELEASE_TAG=desktop-v0.1.28"; \
-		exit 1; \
-	fi; \
-	git ls-remote --exit-code --tags origin "$$tag" >/dev/null || { \
-		echo "Tag $$tag does not exist on origin. Create and push the tag before draft-release preview."; \
-		exit 1; \
-	}; \
-	echo "Triggering $(DESKTOP_RELEASE_WORKFLOW) draft release preview on $$tag with updater publish disabled..."; \
-	gh workflow run "$(DESKTOP_RELEASE_WORKFLOW)" \
-		--ref "$$tag" \
-		-f dry_run=false \
-		-f publish_updater=false \
-		-f target_os="$(DESKTOP_RELEASE_TARGET_OS)"; \
-	echo ""; \
-	echo "Next:"; \
-	echo "  gh run list --workflow \"$(DESKTOP_RELEASE_WORKFLOW)\" --limit 5"; \
-	echo "  gh run watch <RUN_ID>"
 
 # --- Production ops shortcuts ---
 
@@ -1495,13 +1423,10 @@ build-rust:
 
 runtime-build: build-rust
 
-desktop-build: cloud-sdk-build cloud-sdk-react-build sdk-build sdk-react-build shared-build
-	cd apps/desktop && pnpm exec tsc && pnpm exec vite build
-
 web-build: cloud-sdk-build cloud-sdk-react-build sdk-build shared-build
 	cd apps/web && pnpm exec tsc -p tsconfig.json && pnpm exec vite build
 
-build-frontend: desktop-build web-build
+build-frontend: web-build
 
 build: build-rust build-frontend
 
@@ -1513,14 +1438,6 @@ test-agent-runtime-cloud-e2b: sdk-generate
 install:
 	pnpm install
 
-# --- Sidecar staging ---
-
-stage-sidecar:
-	$(CARGO) build --release -p anyharness --target $(TARGET)
-	mkdir -p apps/desktop/src-tauri/binaries
-	cp target/$(TARGET)/release/anyharness apps/desktop/src-tauri/binaries/anyharness-$(TARGET)
-	chmod +x apps/desktop/src-tauri/binaries/anyharness-$(TARGET)
-
 # --- Combined ---
 
 all: check check-max-lines check-server-boundaries sdk-build
@@ -1531,7 +1448,6 @@ clean:
 	$(CARGO) clean
 	rm -rf anyharness/sdk/dist anyharness/sdk/src/generated anyharness/sdk/generated/openapi.json
 	rm -f server/openapi.json
-	rm -rf apps/desktop/dist
 
 # ── agent catalog ────────────────────────────────────────────────────────────
 # View the current catalog draft (rebuild from committed snapshots + open viewer).
