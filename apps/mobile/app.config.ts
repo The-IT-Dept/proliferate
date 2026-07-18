@@ -4,7 +4,7 @@ import type { ExpoConfig, ConfigContext } from "expo/config";
 // build/submit profiles set (see eas.json). Default (unset) = production.
 const IS_STAGING = process.env.APP_VARIANT === "staging";
 
-const BUNDLE_ID = IS_STAGING ? "ai.proliferate.mobile.staging" : "ai.proliferate.mobile";
+const BUNDLE_ID = IS_STAGING ? "au.theitdept.proliferate.staging" : "au.theitdept.proliferate";
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
@@ -25,7 +25,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     buildNumber: "29",
     supportsTablet: true,
     usesAppleSignIn: true,
-    associatedDomains: ["applinks:app.proliferate.ai"],
+    associatedDomains: ["applinks:proliferate.theitdept.au"],
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
@@ -45,8 +45,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         action: "VIEW",
         autoVerify: true,
         data: [
-          { scheme: "https", host: "app.proliferate.ai", pathPrefix: "/workspaces/" },
-          { scheme: "https", host: "app.proliferate.ai", pathPrefix: "/cloud/workspaces/" },
+          { scheme: "https", host: "proliferate.theitdept.au", pathPrefix: "/workspaces/" },
+          { scheme: "https", host: "proliferate.theitdept.au", pathPrefix: "/cloud/workspaces/" },
         ],
         category: ["BROWSABLE", "DEFAULT"],
       },
@@ -71,9 +71,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
   ],
   extra: {
-    eas: {
-      projectId: "e975a894-8056-4fea-83cd-206709c71dc9",
-    },
+    // projectId is written by `eas init` under the `owner` account below; the
+    // upstream id was removed so init mints a fresh project for this account.
+    eas: {},
   },
-  owner: "pablojosecodes",
+  owner: "nicko170",
 });
