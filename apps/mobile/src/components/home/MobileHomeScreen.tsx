@@ -26,7 +26,6 @@ import { MobileHomeRepoPopover } from "./screen/MobileHomeRepoPopover";
 interface MobileHomeScreenProps {
   ownerUserId: string | null;
   onOpenChat: (chat: MobileCloudChat) => void;
-  onOpenDrawer: () => void;
   onConfigureRepos: () => void;
 }
 
@@ -35,7 +34,6 @@ type HomeSheet = "repo" | "branch" | "config" | null;
 export function MobileHomeScreen({
   ownerUserId,
   onOpenChat,
-  onOpenDrawer,
   onConfigureRepos,
 }: MobileHomeScreenProps) {
   const keyboardInset = useVisualViewportKeyboardInset();
@@ -99,14 +97,7 @@ export function MobileHomeScreen({
       keyboardVerticalOffset={0}
     >
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open navigation"
-          onPress={onOpenDrawer}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-        >
-          <MobileIcon name="menu" size={20} color={colors.fg} />
-        </Pressable>
+        <View style={styles.headerButton} />
         <Text style={styles.headerTitle}>New chat</Text>
         <Pressable
           accessibilityRole="button"

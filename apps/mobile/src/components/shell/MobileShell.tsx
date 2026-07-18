@@ -10,8 +10,7 @@ import { MobileAutomationsScreen } from "../automations/MobileAutomationsScreen"
 import { MobileChatScreen } from "../chat/MobileChatScreen";
 import { MobileHomeScreen } from "../home/MobileHomeScreen";
 import { MobileSettingsScreen } from "../settings/MobileSettingsScreen";
-import { MobileDrawer } from "./drawer/MobileDrawer";
-import { MobileShellWithDrawer } from "./screen/MobileShellWithDrawer";
+import { MobileTabBar } from "./tabbar/MobileTabBar";
 import { MobileTopBar } from "../primitives/MobileTopBar";
 import { MobileWorkspacesScreen } from "../work/MobileAllWorkScreen";
 import { useMobileOnboardingStatus } from "../../hooks/shell/lifecycle/use-mobile-onboarding-status";
@@ -22,8 +21,10 @@ import {
   buildMobileShellAccountSummary,
   mobileShellRouteSubtitle,
 } from "../../lib/domain/shell/mobile-shell-navigation";
+import { resolveMobileShellStage } from "../../lib/domain/shell/mobile-shell-stage";
 import { routeTitle } from "../../navigation/navigation-model";
 import { useMobileAuth } from "../../providers/MobileAuthProvider";
+import { MobileWorkspaceRuntimeProvider } from "../../providers/MobileWorkspaceRuntimeProvider";
 import { colors, spacing } from "../../styles/tokens";
 
 export function MobileShell() {
@@ -44,6 +45,11 @@ export function MobileShell() {
   const { completeOnboarding, onboardingStatus } = useMobileOnboardingStatus(authState);
   const subtitle = useMemo(() => mobileShellRouteSubtitle(nav.route), [nav.route]);
   const account = useMemo(() => buildMobileShellAccountSummary(user), [user]);
+  const stage = resolveMobileShellStage({
+    authState,
+    onboardingStatus,
+    hasSelectedChat: nav.selectedChat !== null,
+  });
   const telemetryScreen = nav.selectedChat ? "chat" : nav.route;
 
   useMobileScreenTelemetry(authState, telemetryScreen);
@@ -60,7 +66,7 @@ export function MobileShell() {
     await signOut();
   }
 
-  if (authState === "bootstrapping") {
+  if (stage === "bootstrapping") {
     return (
       <SafeAreaView style={styles.root} edges={["top", "right", "bottom", "left"]}>
         <StatusBar style="light" />
@@ -72,7 +78,7 @@ export function MobileShell() {
     );
   }
 
-  if (authState === "signed_out") {
+  if (stage === "signed_out") {
     return (
       <SafeAreaView style={styles.root} edges={["top", "right", "bottom", "left"]}>
         <StatusBar style="light" />
@@ -86,7 +92,7 @@ export function MobileShell() {
     );
   }
 
-  if (authState === "needs_github") {
+  if (stage === "needs_github") {
     return (
       <SafeAreaView style={styles.root} edges={["top", "right", "bottom", "left"]}>
         <StatusBar style="light" />
@@ -100,7 +106,7 @@ export function MobileShell() {
     );
   }
 
-  if (onboardingStatus === "needed") {
+  if (stage === "onboarding") {
     return (
       <View style={styles.rootShell}>
         <StatusBar style="light" />
@@ -109,72 +115,57 @@ export function MobileShell() {
     );
   }
 
+  // stage is "tabs" or "chat": the authenticated 4-tab glass shell, or the
+  // workspace shell pushed full-screen over it (hides the tab bar — IA §1).
+  // Both need the AnyHarness workspace-runtime scope, so it wraps this whole
+  // branch rather than just the chat screen.
   return (
-    <View style={styles.rootShell}>
-      <StatusBar style="light" />
+    <MobileWorkspaceRuntimeProvider workspaceId={nav.selectedChat?.workspaceId ?? null}>
+      <View style={styles.rootShell}>
+        <StatusBar style="light" />
 
-      <MobileShellWithDrawer
-        drawerOpen={nav.drawerOpen}
-        setDrawerOpen={nav.setDrawerOpen}
-        drawer={
-          <MobileDrawer
-            activeRoute={nav.selectedChat ? null : nav.route}
-            onNavigate={nav.navigate}
-            onOpenChat={nav.openChat}
-            onNewChat={() => nav.navigate("home")}
-            onClose={() => nav.setDrawerOpen(false)}
-            account={account}
-          />
-        }
-      >
-        {nav.selectedChat ? (
-          <MobileChatScreen
-            chat={nav.selectedChat}
-            ownerUserId={ownerUserId}
-            productToken={accessToken}
-            onBack={nav.closeChat}
-            onInitialPendingPromptConsumed={nav.clearSelectedChatInitialPendingPrompt}
-            onSessionSelected={nav.markSelectedChatSession}
-          />
-        ) : nav.route === "home" ? (
-          <MobileHomeScreen
-            ownerUserId={ownerUserId}
-            onOpenChat={nav.openChat}
-            onOpenDrawer={() => nav.setDrawerOpen(true)}
-            onConfigureRepos={() => nav.navigate("settings")}
-          />
+        {stage === "chat" && nav.selectedChat ? (
+          <SafeAreaView style={styles.chatRoot} edges={["top", "right", "bottom", "left"]}>
+            <MobileChatScreen
+              chat={nav.selectedChat}
+              ownerUserId={ownerUserId}
+              productToken={accessToken}
+              onBack={nav.closeChat}
+              onInitialPendingPromptConsumed={nav.clearSelectedChatInitialPendingPrompt}
+              onSessionSelected={nav.markSelectedChatSession}
+            />
+          </SafeAreaView>
         ) : (
-          <View style={styles.body}>
-            {nav.route === "work" ? (
-              <MobileWorkspacesScreen
-                onOpenChat={nav.openChat}
-                onOpenDrawer={() => nav.setDrawerOpen(true)}
-                onNewChat={() => nav.navigate("home")}
-              />
-            ) : nav.route === "automations" ? (
-              <>
-                <MobileTopBar
-                  title={routeTitle(nav.route)}
-                  subtitle={subtitle}
-                  leading={{ kind: "menu", onPress: () => nav.setDrawerOpen(true) }}
+          <SafeAreaView style={styles.tabRoot} edges={["top", "left", "right"]}>
+            <View style={styles.tabContent}>
+              {nav.route === "home" ? (
+                <MobileHomeScreen
+                  ownerUserId={ownerUserId}
+                  onOpenChat={nav.openChat}
+                  onConfigureRepos={() => nav.navigate("settings")}
                 />
-                <MobileAutomationsScreen />
-              </>
-            ) : (
-              <>
-                <MobileTopBar
-                  title={routeTitle(nav.route)}
-                  subtitle={subtitle}
-                  leading={{ kind: "menu", onPress: () => nav.setDrawerOpen(true) }}
+              ) : nav.route === "work" ? (
+                <MobileWorkspacesScreen
+                  onOpenChat={nav.openChat}
+                  onNewChat={() => nav.navigate("home")}
                 />
-                <MobileSettingsScreen account={account} onSignOut={() => void handleSignOut()} />
-              </>
-            )}
-          </View>
+              ) : nav.route === "automations" ? (
+                <>
+                  <MobileTopBar title={routeTitle(nav.route)} subtitle={subtitle} />
+                  <MobileAutomationsScreen />
+                </>
+              ) : (
+                <>
+                  <MobileTopBar title={routeTitle(nav.route)} subtitle={subtitle} />
+                  <MobileSettingsScreen account={account} onSignOut={() => void handleSignOut()} />
+                </>
+              )}
+            </View>
+            <MobileTabBar activeRoute={nav.route} onNavigate={nav.navigate} />
+          </SafeAreaView>
         )}
-      </MobileShellWithDrawer>
-
-    </View>
+      </View>
+    </MobileWorkspaceRuntimeProvider>
   );
 }
 
@@ -194,11 +185,19 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
     fontSize: 13,
   },
-  body: {
-    flex: 1,
-  },
   rootShell: {
     flex: 1,
     backgroundColor: colors.sidebar,
+  },
+  chatRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  tabRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  tabContent: {
+    flex: 1,
   },
 });

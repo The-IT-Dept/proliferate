@@ -6,7 +6,7 @@ import type {
 
 import {
   allWorkRoute,
-  drawerRoutes,
+  tabRoutes,
   type MobileCloudChat,
   type RouteId,
 } from "../../../navigation/navigation-model";
@@ -213,7 +213,7 @@ function parseStoredRouteId(value: unknown): RouteId | null {
     return "work";
   }
   if (typeof value === "string") {
-    if (value === allWorkRoute.id || drawerRoutes.some((route) => route.id === value)) {
+    if (value === allWorkRoute.id || tabRoutes.some((route) => route.id === value)) {
       return value as RouteId;
     }
   }

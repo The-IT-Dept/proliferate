@@ -24,14 +24,12 @@ import type { MobileAuthState } from "../../../providers/MobileAuthProvider";
 
 export interface MobileShellNavigation {
   route: RouteId;
-  drawerOpen: boolean;
-  setDrawerOpen: (open: boolean) => void;
   selectedChat: MobileCloudChat | null;
-  /** Navigate to a top-level route, closing the drawer and any open chat. */
+  /** Navigate to a top-level tab, discarding any open chat. */
   navigate: (nextRoute: RouteId) => void;
-  /** Open a chat, closing the drawer. */
+  /** Push the workspace shell (chat), hiding the tab bar. */
   openChat: (chat: MobileCloudChat) => void;
-  /** Return to the route view, discarding the open chat. */
+  /** Pop the workspace shell, returning to the tab view. */
   closeChat: () => void;
   markSelectedChatSession: (sessionId: string) => void;
   clearSelectedChatInitialPendingPrompt: () => void;
@@ -40,18 +38,18 @@ export interface MobileShellNavigation {
 }
 
 /**
- * Owns MobileShell's route/drawer/chat state plus its three side-effect
- * concerns: GitHub App callback / deep-link recovery, cross-launch
- * navigation persistence (restore on mount, persist on change), and the
- * Android hardware back button. Extracted so MobileShell itself stays a
- * thin render switch over auth/onboarding state.
+ * Owns MobileShell's route/chat state plus its three side-effect concerns:
+ * GitHub App callback / deep-link recovery (including the
+ * `?interaction={requestId}` push deep link), cross-launch navigation
+ * persistence (restore on mount, persist on change), and the Android
+ * hardware back button. Extracted so MobileShell itself stays a thin render
+ * switch over auth/onboarding state.
  */
 export function useMobileShellNavigation(
   authState: MobileAuthState,
   ownerUserId: string | null,
 ): MobileShellNavigation {
   const [route, setRoute] = useState<RouteId>("home");
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedChat, setSelectedChat] = useState<MobileCloudChat | null>(null);
   const [linkedWorkspaceId, setLinkedWorkspaceId] = useState<string | null>(null);
   const [linkedWorkspaceSessionId, setLinkedWorkspaceSessionId] = useState<string | null>(null);
@@ -80,7 +78,6 @@ export function useMobileShellNavigation(
     initialLinkAppliedRef.current = true;
     setRoute("settings");
     setSelectedChat(null);
-    setDrawerOpen(false);
     return true;
   }, [cloudClient.baseUrl, queryClient]);
 
@@ -98,7 +95,6 @@ export function useMobileShellNavigation(
     setLinkedRequestId(link.requestId);
     setRoute("work");
     setSelectedChat(null);
-    setDrawerOpen(false);
     return true;
   }, [applyGitHubAppCallback]);
 
@@ -192,10 +188,6 @@ export function useMobileShellNavigation(
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (drawerOpen) {
-        setDrawerOpen(false);
-        return true;
-      }
       if (selectedChat) {
         setSelectedChat(null);
         return true;
@@ -208,17 +200,15 @@ export function useMobileShellNavigation(
     });
 
     return () => subscription.remove();
-  }, [drawerOpen, route, selectedChat]);
+  }, [route, selectedChat]);
 
   const navigate = useCallback((nextRoute: RouteId) => {
     setRoute(nextRoute);
     setSelectedChat(null);
-    setDrawerOpen(false);
   }, []);
 
   const openChat = useCallback((chat: MobileCloudChat) => {
     setSelectedChat(chat);
-    setDrawerOpen(false);
   }, []);
 
   const closeChat = useCallback(() => {
@@ -237,7 +227,6 @@ export function useMobileShellNavigation(
 
   const resetForSignOut = useCallback(async (ownerUserIdAtSignOut: string | null) => {
     setRoute("home");
-    setDrawerOpen(false);
     setSelectedChat(null);
     setLinkedWorkspaceId(null);
     setLinkedWorkspaceSessionId(null);
@@ -250,8 +239,6 @@ export function useMobileShellNavigation(
   return useMemo(
     () => ({
       route,
-      drawerOpen,
-      setDrawerOpen,
       selectedChat,
       navigate,
       openChat,
@@ -263,7 +250,6 @@ export function useMobileShellNavigation(
     [
       clearSelectedChatInitialPendingPrompt,
       closeChat,
-      drawerOpen,
       markSelectedChatSession,
       navigate,
       openChat,

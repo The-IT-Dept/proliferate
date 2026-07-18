@@ -2,7 +2,7 @@ import type { MobileIconName } from "../components/primitives/MobileIcon";
 
 export type RouteId = "home" | "work" | "automations" | "settings";
 
-export interface DrawerRoute {
+export interface MobileTabRoute {
   id: RouteId;
   label: string;
   icon: MobileIconName;
@@ -45,18 +45,22 @@ export interface MobilePendingPrompt {
   failureMessage?: string | null;
 }
 
-export const drawerRoutes: DrawerRoute[] = [
+/**
+ * The 4 glass tabs (IA §1 "Why four tabs"), in the tab-bar's left-to-right
+ * order: Home / Workspaces / Automations / Settings.
+ */
+export const tabRoutes: MobileTabRoute[] = [
   { id: "home", label: "Home", icon: "home" },
-  { id: "automations", label: "Automations", icon: "calendar-clock" },
   { id: "work", label: "Workspaces", icon: "workspaces" },
+  { id: "automations", label: "Automations", icon: "calendar-clock" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
-export const allWorkRoute: DrawerRoute = { id: "work", label: "Workspaces", icon: "workspaces" };
+export const allWorkRoute: MobileTabRoute = { id: "work", label: "Workspaces", icon: "workspaces" };
 
 export function routeTitle(route: RouteId): string {
   if (route === allWorkRoute.id) {
     return allWorkRoute.label;
   }
-  return drawerRoutes.find((item) => item.id === route)?.label ?? "Home";
+  return tabRoutes.find((item) => item.id === route)?.label ?? "Home";
 }

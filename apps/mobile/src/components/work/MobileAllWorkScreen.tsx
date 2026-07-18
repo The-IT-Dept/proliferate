@@ -31,13 +31,11 @@ import { colors, radius, spacing } from "../../styles/tokens";
 
 interface MobileWorkspacesScreenProps {
   onOpenChat: (chat: MobileCloudChat) => void;
-  onOpenDrawer: () => void;
   onNewChat: () => void;
 }
 
 export function MobileWorkspacesScreen({
   onOpenChat,
-  onOpenDrawer,
   onNewChat,
 }: MobileWorkspacesScreenProps) {
   const [filterOpen, setFilterOpen] = useState(false);
@@ -71,14 +69,7 @@ export function MobileWorkspacesScreen({
       }
     >
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open navigation"
-          onPress={onOpenDrawer}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-        >
-          <MobileIcon name="menu" size={20} color={colors.fg} />
-        </Pressable>
+        <View style={styles.headerButton} />
         <Text style={styles.title}>Workspaces</Text>
         <Pressable
           accessibilityRole="button"
