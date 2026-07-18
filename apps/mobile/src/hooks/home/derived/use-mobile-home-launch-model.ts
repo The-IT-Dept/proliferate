@@ -19,6 +19,7 @@ import {
   buildMobileRepoOptions,
   buildMobileBranchOptions,
   buildMobileRuntimeOptions,
+  resolveMobileSelectedBaseBranch,
 } from "../../../lib/domain/home/mobile-home-launch";
 
 export function useMobileHomeLaunchModel() {
@@ -71,11 +72,11 @@ export function useMobileHomeLaunchModel() {
     }),
     [repoBranches.data?.branches, repoBranches.data?.defaultBranch, selectedBaseBranchOverride],
   );
-  const selectedBaseBranch =
-    selectedBaseBranchOverride
-    ?? repoBranches.data?.defaultBranch
-    ?? branchOptions[0]
-    ?? null;
+  const selectedBaseBranch = resolveMobileSelectedBaseBranch({
+    overrideBranch: selectedBaseBranchOverride,
+    defaultBranch: repoBranches.data?.defaultBranch,
+    branchOptions,
+  });
   const selectedRuntime =
     runtimeOptions.find((runtime) => runtime.id === runtimeId) ?? runtimeOptions[0] ?? null;
   const catalogAgentKindsKey = agentCatalog.data?.agents.map((agent) => agent.kind).join("\0") ?? "";

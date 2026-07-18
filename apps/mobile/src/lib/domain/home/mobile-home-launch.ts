@@ -58,6 +58,26 @@ export function buildMobileBranchOptions(input: {
   return options;
 }
 
+/**
+ * Resolves which base branch is "selected" for a repo, in priority order:
+ * an explicit per-repo override the user picked in the branch sheet, then
+ * the repo's default branch (from `useCloudRepoBranches`), then the first
+ * available branch option, then null while nothing has loaded yet. Mirrors
+ * the web home composer's base-branch resolution (`useHomeNextRepositorySelection`
+ * → `selectedBranchName`), extracted here so it's independently testable —
+ * this feeds directly into launch-enablement (mobile-home-launch-enablement.ts).
+ */
+export function resolveMobileSelectedBaseBranch(input: {
+  overrideBranch: string | null;
+  defaultBranch: string | null | undefined;
+  branchOptions: readonly string[];
+}): string | null {
+  return input.overrideBranch
+    ?? input.defaultBranch
+    ?? input.branchOptions[0]
+    ?? null;
+}
+
 export function buildMobileRuntimeOptions(
   targets?: unknown,
 ): MobileRuntimeOption[] {
