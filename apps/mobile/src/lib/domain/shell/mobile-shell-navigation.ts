@@ -60,9 +60,31 @@ export function mobileShellRouteSubtitle(route: RouteId): string | undefined {
   }
 }
 
-export function mobileWorkspaceLinkFromUrl(
-  url: string | null,
-): { workspaceId: string; sessionId: string | null } | null {
+export interface MobileWorkspaceDeepLink {
+  workspaceId: string;
+  sessionId: string | null;
+  /**
+   * The `?interaction={requestId}` query param (IA §"Deep links & push"):
+   * `proliferate://workspaces/{id}?interaction={requestId}`. Group A only
+   * parses and routes to the workspace; scrolling the transcript to the
+   * interaction card is wired in a later group.
+   */
+  requestId: string | null;
+}
+
+/**
+ * Parses a Proliferate workspace deep link — either the custom-scheme form
+ * (`proliferate://workspaces/{id}`, matching `desktopWorkspaceDeepLink` /
+ * `mobileWorkspaceDeepLink` in `cloud/sdk/src/client/deep-links.ts`) or the
+ * web universal-link form (`https://<host>/cloud/workspaces/{id}` or
+ * `https://<host>/workspaces/{id}`). Also accepts the singular `workspace`
+ * host used by the IA's deep-link table
+ * (`proliferate://workspace/{id}?interaction={requestId}`), since both
+ * spellings reach the same route. Returns `null` for anything else
+ * (malformed URLs, other custom-scheme routes like auth/GitHub-App
+ * callbacks) — the decoder never invents a destination.
+ */
+export function mobileWorkspaceLinkFromUrl(url: string | null): MobileWorkspaceDeepLink | null {
   if (!url) {
     return null;
   }
@@ -75,7 +97,7 @@ export function mobileWorkspaceLinkFromUrl(
     const workspaceIndex =
       parts[0] === "cloud" && parts[1] === "workspaces"
         ? 1
-        : parts[0] === "workspaces"
+        : parts[0] === "workspaces" || parts[0] === "workspace"
           ? 0
           : -1;
     const workspaceId = workspaceIndex >= 0 ? parts[workspaceIndex + 1] : null;
@@ -87,9 +109,11 @@ export function mobileWorkspaceLinkFromUrl(
       sessionPathKind === "chats" || sessionPathKind === "sessions"
         ? parts[workspaceIndex + 3] ?? null
         : parsed.searchParams.get("sessionId");
+    const requestId = parsed.searchParams.get("interaction");
     return {
       workspaceId: decodeURIComponent(workspaceId),
       sessionId: sessionId ? decodeURIComponent(sessionId) : null,
+      requestId: requestId || null,
     };
   } catch {
     return null;
@@ -100,6 +124,7 @@ export function mobileLinkedChatForWorkspace(
   workspace: CloudWorkspaceDetail,
   sessions: readonly CloudSessionProjection[],
   linkedSessionId: string | null,
+  linkedRequestId?: string | null,
 ): MobileCloudChat | null {
   const sortedSessions = [...sessions].sort(compareSessions);
   const session = linkedSessionId
@@ -116,6 +141,7 @@ export function mobileLinkedChatForWorkspace(
     title: session?.title ?? workspace.displayName ?? workspace.repo?.name ?? "Workspace",
     status: session?.status ?? workspace.workspaceStatus ?? workspace.status,
     visibility: workspace.visibility,
+    initialInteractionRequestId: linkedRequestId ?? null,
   };
 }
 
@@ -153,12 +179,13 @@ export function parseStoredMobileShellChat(
 }
 
 export function chatForMobileShellPersistence(chat: MobileCloudChat): MobileCloudChat {
-  if (!chat.initialPendingPrompt) {
+  if (!chat.initialPendingPrompt && !chat.initialInteractionRequestId) {
     return chat;
   }
   return {
     ...chat,
     initialPendingPrompt: null,
+    initialInteractionRequestId: null,
   };
 }
 
@@ -219,6 +246,7 @@ function parseStoredChatValue(value: unknown): MobileCloudChat | null {
       status: parsed.status,
       visibility: parsed.visibility,
       initialPendingPrompt: null,
+      initialInteractionRequestId: null,
     };
   }
   return null;

@@ -55,6 +55,7 @@ export function useMobileShellNavigation(
   const [selectedChat, setSelectedChat] = useState<MobileCloudChat | null>(null);
   const [linkedWorkspaceId, setLinkedWorkspaceId] = useState<string | null>(null);
   const [linkedWorkspaceSessionId, setLinkedWorkspaceSessionId] = useState<string | null>(null);
+  const [linkedRequestId, setLinkedRequestId] = useState<string | null>(null);
   const [initialLinkChecked, setInitialLinkChecked] = useState(false);
   const [navigationRestored, setNavigationRestored] = useState(false);
   const initialLinkAppliedRef = useRef(false);
@@ -94,6 +95,7 @@ export function useMobileShellNavigation(
     initialLinkAppliedRef.current = true;
     setLinkedWorkspaceId(link.workspaceId);
     setLinkedWorkspaceSessionId(link.sessionId);
+    setLinkedRequestId(link.requestId);
     setRoute("work");
     setSelectedChat(null);
     setDrawerOpen(false);
@@ -172,7 +174,12 @@ export function useMobileShellNavigation(
     if (!linkedWorkspaceId || !linkedWorkspace.data) {
       return;
     }
-    const chat = mobileLinkedChatForWorkspace(linkedWorkspace.data, [], linkedWorkspaceSessionId);
+    const chat = mobileLinkedChatForWorkspace(
+      linkedWorkspace.data,
+      [],
+      linkedWorkspaceSessionId,
+      linkedRequestId,
+    );
     if (chat) {
       setSelectedChat(chat);
     } else {
@@ -180,7 +187,8 @@ export function useMobileShellNavigation(
     }
     setLinkedWorkspaceId(null);
     setLinkedWorkspaceSessionId(null);
-  }, [linkedWorkspace.data, linkedWorkspaceId, linkedWorkspaceSessionId]);
+    setLinkedRequestId(null);
+  }, [linkedRequestId, linkedWorkspace.data, linkedWorkspaceId, linkedWorkspaceSessionId]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -233,6 +241,7 @@ export function useMobileShellNavigation(
     setSelectedChat(null);
     setLinkedWorkspaceId(null);
     setLinkedWorkspaceSessionId(null);
+    setLinkedRequestId(null);
     setNavigationRestored(false);
     initialLinkAppliedRef.current = false;
     await clearMobileShellNavigation(ownerUserIdAtSignOut).catch(() => undefined);

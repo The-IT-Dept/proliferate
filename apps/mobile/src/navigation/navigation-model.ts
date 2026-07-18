@@ -20,6 +20,13 @@ export interface MobileCloudChat {
   status: string;
   visibility: string;
   initialPendingPrompt?: MobilePendingPrompt | null;
+  /**
+   * A pending-interaction id carried by a `proliferate://workspaces/{id}?interaction={requestId}`
+   * deep link (push notification tap). Group A only routes to the workspace;
+   * a later group consumes this to scroll the chat transcript to the card and
+   * focus it (IA §"Deep links & push").
+   */
+  initialInteractionRequestId?: string | null;
 }
 
 export interface MobilePendingPrompt {
