@@ -3,13 +3,14 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { Stack, useGlobalSearchParams, usePathname } from "expo-router";
+import { Stack, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
 
 import { getMobileTelemetryConfig } from "../src/lib/integrations/telemetry/config";
 import { initializeMobilePostHog } from "../src/lib/integrations/telemetry/posthog";
 import { mobileTelemetryScreenForPathname } from "../src/lib/domain/shell/mobile-route-telemetry";
 import { resolveMobileShellStage } from "../src/lib/domain/shell/mobile-shell-stage";
 import { useMobileClientDailyActivity } from "../src/hooks/telemetry/lifecycle/use-mobile-client-daily-activity";
+import { useMobileDeepLinkRouter } from "../src/hooks/shell/lifecycle/use-mobile-deep-link-router";
 import { useMobileOnboardingStatus } from "../src/hooks/shell/lifecycle/use-mobile-onboarding-status";
 import { useMobileScreenTelemetry } from "../src/hooks/telemetry/lifecycle/use-mobile-screen-telemetry";
 import { MobileAuthProvider, useMobileAuth } from "../src/providers/MobileAuthProvider";
@@ -61,6 +62,7 @@ export default function RootLayout() {
  * normal Stack navigation state, not something the gate decides.
  */
 function RootNavigationGate() {
+  const router = useRouter();
   const { authState } = useMobileAuth();
   const { onboardingStatus } = useMobileOnboardingStatus(authState);
   const stage = resolveMobileShellStage({ authState, onboardingStatus, hasSelectedChat: false });
@@ -70,6 +72,7 @@ function RootNavigationGate() {
   const telemetryScreen = mobileTelemetryScreenForPathname(pathname);
   useMobileScreenTelemetry(authState, telemetryScreen);
   useMobileDailyActivity(authState, telemetryScreen);
+  useMobileDeepLinkRouter(router, stage === "tabs");
 
   if (stage === "bootstrapping") {
     return (
