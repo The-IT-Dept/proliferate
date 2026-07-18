@@ -4,7 +4,7 @@ import type {
   ProliferateCloudClient,
 } from "@proliferate/cloud-sdk";
 
-import type { MobilePendingPrompt } from "../../../navigation/navigation-model";
+import type { MobilePendingPrompt } from "../../domain/workspace/mobile-workspace-chat";
 import {
   getMobileCloudSandboxAnyHarnessClient,
 } from "../anyharness/cloud-sandbox-runtime";

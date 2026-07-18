@@ -10,7 +10,7 @@ import { MobileKindIcon } from "../primitives/MobileKindIcon";
 import { MobileListRow } from "../primitives/MobileListRow";
 import { MobileEmptyState, MobileScreen } from "../primitives/MobileLayout";
 import { MobileStatusDot } from "../primitives/MobileStatusDot";
-import type { MobileCloudChat } from "../../navigation/navigation-model";
+import type { MobileCloudChat } from "../../lib/domain/workspace/mobile-workspace-chat";
 import { colors, radius, spacing } from "../../styles/tokens";
 
 interface MobileSessionsScreenProps {

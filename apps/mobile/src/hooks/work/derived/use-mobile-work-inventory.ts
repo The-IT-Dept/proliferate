@@ -8,7 +8,7 @@ import {
   type CloudWorkItemView,
 } from "@proliferate/product-domain/workspaces/cloud-work-inventory";
 
-import type { MobileCloudChat } from "../../../navigation/navigation-model";
+import type { MobileCloudChat } from "../../../lib/domain/workspace/mobile-workspace-chat";
 
 export interface MobileWorkItem {
   view: CloudWorkItemView;

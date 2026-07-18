@@ -3,7 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { MobileWorkspacesScreen } from "../../src/components/work/MobileAllWorkScreen";
 import { mobileWorkspaceHref } from "../../src/lib/domain/shell/mobile-workspace-route";
-import type { MobileCloudChat } from "../../src/navigation/navigation-model";
+import type { MobileCloudChat } from "../../src/lib/domain/workspace/mobile-workspace-chat";
 import { colors } from "../../src/styles/tokens";
 
 export default function WorkspacesTabRoute() {

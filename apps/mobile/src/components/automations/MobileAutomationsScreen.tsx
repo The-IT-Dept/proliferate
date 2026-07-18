@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { AutomationResponse } from "@proliferate/cloud-sdk";
 import {
   useAutomations,
@@ -12,16 +11,13 @@ import { MobileIcon } from "../primitives/MobileIcon";
 import { MobileListRow } from "../primitives/MobileListRow";
 import { MobileEmptyState, MobileScreen } from "../primitives/MobileLayout";
 import { MobileStatusDot } from "../primitives/MobileStatusDot";
-import { tabBarFootprint } from "../shell/tabbar/MobileTabBar";
 import { colors, layout, radius, spacing } from "../../styles/tokens";
 
 export function MobileAutomationsScreen() {
-  const insets = useSafeAreaInsets();
-  // The floating glass tab bar is an absolutely-positioned sibling, not a
-  // layout participant, so the scroll content must reserve its footprint
-  // itself or the last automation's toggle control scrolls to a resting
-  // point underneath the bar, where taps hit the bar's Pressables instead.
-  const scrollContentBottomPadding = Math.max(layout.screenBottomPadding, tabBarFootprint(insets.bottom));
+  // The native tab bar computes its own content insets for the first
+  // scroll view in a tab screen (app/(tabs)/_layout.tsx), so this no
+  // longer needs to reserve a floating bar's footprint by hand.
+  const scrollContentBottomPadding = layout.screenBottomPadding;
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [togglingAutomationId, setTogglingAutomationId] = useState<string | null>(null);
   const automations = useAutomations({ ownerScope: "personal" });

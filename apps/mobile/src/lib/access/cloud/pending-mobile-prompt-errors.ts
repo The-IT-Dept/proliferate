@@ -1,6 +1,6 @@
 import { ProliferateClientError } from "@proliferate/cloud-sdk";
 
-import type { MobilePendingPrompt } from "../../../navigation/navigation-model";
+import type { MobilePendingPrompt } from "../../domain/workspace/mobile-workspace-chat";
 
 const RETRYABLE_READINESS_ERROR_CODES = new Set([
   "cloud_command_target_config_required",

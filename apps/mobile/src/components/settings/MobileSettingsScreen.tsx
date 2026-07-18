@@ -5,7 +5,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileSettingsModel } from "../../hooks/settings/facade/use-mobile-settings-model";
 import { useMobileBillingActions } from "../../hooks/settings/workflows/use-mobile-billing-actions";
@@ -24,7 +23,6 @@ import {
   MobileSettingsRow,
   MobileSettingsSection,
 } from "./screen/MobileSettingsSection";
-import { tabBarFootprint } from "../shell/tabbar/MobileTabBar";
 import { colors, spacing } from "../../styles/tokens";
 
 interface MobileSettingsScreenProps {
@@ -33,12 +31,10 @@ interface MobileSettingsScreenProps {
 }
 
 export function MobileSettingsScreen({ account, onSignOut }: MobileSettingsScreenProps) {
-  const insets = useSafeAreaInsets();
-  // The floating glass tab bar is an absolutely-positioned sibling, not a
-  // layout participant, so the scroll content must reserve its footprint
-  // itself or the Sign out control scrolls to a resting point underneath
-  // the bar, where taps hit the bar's Pressables instead.
-  const scrollContentBottomPadding = Math.max(spacing[6], tabBarFootprint(insets.bottom));
+  // The native tab bar computes its own content insets for the first
+  // scroll view in a tab screen (app/(tabs)/_layout.tsx), so this no
+  // longer needs to reserve a floating bar's footprint by hand.
+  const scrollContentBottomPadding = spacing[6];
   const settingsModel = useMobileSettingsModel(account);
   const billingWorkflow = useMobileBillingActions();
   const [addRepoOpen, setAddRepoOpen] = useState(false);

@@ -2,7 +2,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { MobileChatScreen } from "../../src/components/chat/MobileChatScreen";
-import type { MobileCloudChat } from "../../src/navigation/navigation-model";
+import type { MobileCloudChat } from "../../src/lib/domain/workspace/mobile-workspace-chat";
 import { useMobileAuth } from "../../src/providers/MobileAuthProvider";
 import { colors } from "../../src/styles/tokens";
 

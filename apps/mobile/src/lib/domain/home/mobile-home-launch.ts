@@ -6,7 +6,7 @@ import {
   type CloudLaunchComposerSelection,
 } from "@proliferate/product-domain/chats/cloud/composer-controls";
 
-import type { MobilePendingPrompt } from "../../../navigation/navigation-model";
+import type { MobilePendingPrompt } from "../workspace/mobile-workspace-chat";
 import type { MobileIconName } from "../../../components/primitives/MobileIcon";
 
 export interface MobileRepoOption {

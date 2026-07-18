@@ -15,7 +15,7 @@ import {
   type MobileRuntimeOption,
 } from "../../../lib/domain/home/mobile-home-launch";
 import { savePendingMobilePrompt } from "../../../lib/access/cloud/pending-mobile-prompt-store";
-import type { MobileCloudChat } from "../../../navigation/navigation-model";
+import type { MobileCloudChat } from "../../../lib/domain/workspace/mobile-workspace-chat";
 
 export function useMobileHomeLaunchActions(input: {
   ownerUserId: string | null;

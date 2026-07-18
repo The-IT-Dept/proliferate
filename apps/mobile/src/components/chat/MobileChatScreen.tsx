@@ -24,7 +24,7 @@ import { MobileWorkspaceActionSheet } from "./MobileWorkspaceActionSheet";
 import type {
   MobileCloudChat,
   MobilePendingPrompt,
-} from "../../navigation/navigation-model";
+} from "../../lib/domain/workspace/mobile-workspace-chat";
 import type { OptimisticPrompt } from "../../lib/domain/chat/mobile-chat-transcript";
 import {
   mobileStatus,

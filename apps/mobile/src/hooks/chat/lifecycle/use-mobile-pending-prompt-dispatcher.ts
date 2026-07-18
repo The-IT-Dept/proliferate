@@ -4,7 +4,7 @@ import type {
   ProliferateCloudClient,
 } from "@proliferate/cloud-sdk";
 
-import type { MobilePendingPrompt } from "../../../navigation/navigation-model";
+import type { MobilePendingPrompt } from "../../../lib/domain/workspace/mobile-workspace-chat";
 import { savePendingMobilePrompt } from "../../../lib/access/cloud/pending-mobile-prompt-store";
 import { dispatchPendingMobilePrompt } from "../../../lib/access/cloud/pending-mobile-prompt-dispatch";
 import {

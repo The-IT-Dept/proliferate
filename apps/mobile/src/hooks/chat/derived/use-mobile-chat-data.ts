@@ -23,7 +23,7 @@ import {
 import type {
   MobileCloudChat,
   MobilePendingPrompt,
-} from "../../../navigation/navigation-model";
+} from "../../../lib/domain/workspace/mobile-workspace-chat";
 import {
   type OptimisticPrompt,
   buildOptimisticPromptRows,

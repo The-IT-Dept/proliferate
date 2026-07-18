@@ -14,7 +14,7 @@ import { latestCloudTranscriptSeq } from "@proliferate/product-domain/chats/clou
 import type { CloudChatTranscriptRowView } from "@proliferate/product-domain/chats/cloud/transcript-view";
 import { cloudCommandReadiness } from "@proliferate/product-domain/workspaces/cloud-work-inventory";
 
-import type { MobilePendingPrompt } from "../../../navigation/navigation-model";
+import type { MobilePendingPrompt } from "../../../lib/domain/workspace/mobile-workspace-chat";
 import { savePendingMobilePrompt } from "../../../lib/access/cloud/pending-mobile-prompt-store";
 import {
   getMobileCloudSandboxAnyHarnessClient,

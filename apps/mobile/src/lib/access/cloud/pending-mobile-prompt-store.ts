@@ -1,4 +1,4 @@
-import type { MobilePendingPrompt } from "../../../navigation/navigation-model";
+import type { MobilePendingPrompt } from "../../domain/workspace/mobile-workspace-chat";
 import {
   deleteMobileStorageItem,
   getMobileStorageItem,

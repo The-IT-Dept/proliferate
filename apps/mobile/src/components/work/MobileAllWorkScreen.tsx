@@ -7,7 +7,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileWorkInventory } from "../../hooks/work/derived/use-mobile-work-inventory";
 import { useMobileWorkFilters } from "../../hooks/work/ui/use-mobile-work-filters";
@@ -17,7 +16,7 @@ import {
   MOBILE_WORK_STATUS_OPTIONS,
   MOBILE_WORK_TYPE_OPTIONS,
 } from "../../lib/domain/work/mobile-work-filters";
-import type { MobileCloudChat } from "../../navigation/navigation-model";
+import type { MobileCloudChat } from "../../lib/domain/workspace/mobile-workspace-chat";
 import { MobileIcon } from "../primitives/MobileIcon";
 import {
   MobileEmptyState,
@@ -28,7 +27,6 @@ import {
   MobileWorkFilterSheet,
 } from "./screen/MobileWorkFilterSheet";
 import { MobileWorkSummaryPill } from "./screen/MobileWorkFilterRows";
-import { tabBarFootprint } from "../shell/tabbar/MobileTabBar";
 import { colors, layout, radius, spacing } from "../../styles/tokens";
 
 interface MobileWorkspacesScreenProps {
@@ -40,12 +38,10 @@ export function MobileWorkspacesScreen({
   onOpenChat,
   onNewChat,
 }: MobileWorkspacesScreenProps) {
-  const insets = useSafeAreaInsets();
-  // The floating glass tab bar is an absolutely-positioned sibling, not a
-  // layout participant, so the scroll content must reserve its footprint
-  // itself or the last workspace card scrolls to a resting point underneath
-  // the bar, where taps hit the bar's Pressables instead.
-  const scrollContentBottomPadding = Math.max(layout.screenBottomPadding, tabBarFootprint(insets.bottom));
+  // The native tab bar computes its own content insets for the first
+  // scroll view in a tab screen (app/(tabs)/_layout.tsx), so this no
+  // longer needs to reserve a floating bar's footprint by hand.
+  const scrollContentBottomPadding = layout.screenBottomPadding;
   const [filterOpen, setFilterOpen] = useState(false);
   const allInventory = useMobileWorkInventory();
   const filterState = useMobileWorkFilters(allInventory.items);

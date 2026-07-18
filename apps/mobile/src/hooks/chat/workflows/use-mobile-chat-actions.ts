@@ -17,7 +17,7 @@ import type { CloudChatTranscriptRowView } from "@proliferate/product-domain/cha
 
 import type {
   MobilePendingPrompt,
-} from "../../../navigation/navigation-model";
+} from "../../../lib/domain/workspace/mobile-workspace-chat";
 import {
   clearPendingMobilePrompt,
 } from "../../../lib/access/cloud/pending-mobile-prompt-store";

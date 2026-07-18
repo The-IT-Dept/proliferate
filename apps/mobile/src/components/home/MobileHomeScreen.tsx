@@ -7,7 +7,6 @@ import {
   View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileHomeLaunchModel } from "../../hooks/home/derived/use-mobile-home-launch-model";
 import { useMobileHomeLaunchActions } from "../../hooks/home/workflows/use-mobile-home-launch-actions";
@@ -20,7 +19,7 @@ import {
   resolveMobileModelAvailabilityNotice,
 } from "../../lib/domain/home/mobile-home-launch-enablement";
 import { summarizeMobileHomeLaunchConfig } from "../../lib/domain/home/mobile-home-config-summary";
-import type { MobileCloudChat } from "../../navigation/navigation-model";
+import type { MobileCloudChat } from "../../lib/domain/workspace/mobile-workspace-chat";
 import { MobileIcon } from "../primitives/MobileIcon";
 import { colors, spacing } from "../../styles/tokens";
 import { MobileBranchPickerSheet } from "./MobileBranchPickerSheet";
@@ -28,7 +27,6 @@ import { MobileHomeComposer } from "./screen/MobileHomeComposer";
 import { MobileHomeConfigSheet } from "./screen/MobileHomeConfigSheet";
 import { MobileHomeRecentSection } from "./screen/MobileHomeRecentSection";
 import { MobileHomeRepoPopover } from "./screen/MobileHomeRepoPopover";
-import { tabBarFootprint } from "../shell/tabbar/MobileTabBar";
 
 interface MobileHomeScreenProps {
   ownerUserId: string | null;
@@ -55,15 +53,11 @@ export function MobileHomeScreen({
   onOpenAgents,
 }: MobileHomeScreenProps) {
   const keyboardInset = useVisualViewportKeyboardInset();
-  const insets = useSafeAreaInsets();
-  // The floating glass tab bar is an absolutely-positioned sibling, not a
-  // layout participant, so the scroll content must reserve its footprint
-  // itself or the Recent list's last item (and the composer's send control,
-  // when the list is short) scrolls to a resting point underneath the bar.
-  const scrollContentBottomPadding = Math.max(
-    SCROLL_CONTENT_BOTTOM_PADDING,
-    tabBarFootprint(insets.bottom),
-  );
+  // The native tab bar (app/(tabs)/_layout.tsx) computes its own content
+  // insets for the first scroll view in a tab screen, so this no longer
+  // needs to reserve a floating bar's footprint by hand - just the
+  // screen's own baseline bottom padding.
+  const scrollContentBottomPadding = SCROLL_CONTENT_BOTTOM_PADDING;
   const [draft, setDraft] = useState("");
   const [sheet, setSheet] = useState<HomeSheet>(null);
   const launchModel = useMobileHomeLaunchModel();

@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import type { MobileCloudChat } from "../../../navigation/navigation-model";
+import type { MobileCloudChat } from "../../../lib/domain/workspace/mobile-workspace-chat";
 import { colors, spacing } from "../../../styles/tokens";
 import { MobileWorkspaceCard } from "../../work/MobileWorkspaceCard";
 
