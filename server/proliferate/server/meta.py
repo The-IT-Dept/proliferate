@@ -190,18 +190,20 @@ def _github_repository_access(config: Settings) -> GitHubRepositoryAccessCapabil
 def _managed_cloud(
     config: Settings, repository_access: GitHubRepositoryAccessCapability
 ) -> ManagedCloudCapability:
-    """Derive managed-Cloud readiness from E2B plus repository authority.
+    """Derive managed-Cloud readiness from the sandbox provider plus repository authority.
 
-    E2B absent -> disabled. E2B partial, or E2B ready with incomplete GitHub
-    App authority -> operator configuration required (workspace mutations
-    would fail on ``require_github_cloud_repo_authority``). Ready only when
-    the whole path is operable.
+    Provider absent/unconfigured -> disabled. Provider partial, or provider
+    ready with incomplete GitHub App authority -> operator configuration
+    required (workspace mutations would fail on
+    ``require_github_cloud_repo_authority``). Ready only when the whole path
+    is operable. Uses the provider-agnostic ``sandbox_provisioning_*``
+    predicates so this reads correctly for both E2B and Kubernetes.
     """
-    e2b_ready = config.cloud_provisioning_configured
-    e2b_partial = config.cloud_provisioning_partially_configured
-    if not e2b_ready and not e2b_partial:
+    provider_ready = config.sandbox_provisioning_configured
+    provider_partial = config.sandbox_provisioning_partially_configured
+    if not provider_ready and not provider_partial:
         return ManagedCloudCapability(status=CAPABILITY_DISABLED, repositoryAuthority=None)
-    if e2b_partial or repository_access.status != CAPABILITY_READY:
+    if provider_partial or repository_access.status != CAPABILITY_READY:
         return ManagedCloudCapability(
             status=CAPABILITY_OPERATOR_CONFIGURATION_REQUIRED,
             repositoryAuthority="github_app",

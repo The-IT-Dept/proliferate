@@ -182,6 +182,16 @@ async def assert_current_schema(conn: AsyncConnection, head_revision: str) -> No
         "runtime_generation",
         "last_error",
     }.isdisjoint(cloud_sandbox_columns)
+    cloud_sandbox_checks = await conn.run_sync(
+        lambda sync_conn: {
+            constraint["name"]: constraint.get("sqltext", "")
+            for constraint in inspect(sync_conn).get_check_constraints("cloud_sandbox")
+        }
+    )
+    assert {"ck_cloud_sandbox_status", "ck_cloud_sandbox_type"} <= cloud_sandbox_checks.keys()
+    assert "kubernetes" in cloud_sandbox_checks["ck_cloud_sandbox_type"]
+    assert "e2b" in cloud_sandbox_checks["ck_cloud_sandbox_type"]
+
     cloud_sandbox_indexes = await conn.run_sync(
         lambda sync_conn: {
             index["name"] for index in inspect(sync_conn).get_indexes("cloud_sandbox")

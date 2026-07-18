@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from proliferate.config import settings
 from proliferate.integrations.sandbox.base import (
     SandboxProvider,
     SandboxProviderConfigurationError,
@@ -10,9 +11,7 @@ from proliferate.integrations.sandbox.base import (
 
 
 def get_configured_sandbox_provider() -> SandboxProvider:
-    from proliferate.integrations.sandbox.e2b import E2BSandboxProvider
-
-    return E2BSandboxProvider()
+    return get_sandbox_provider(settings.sandbox_provider)
 
 
 def get_sandbox_provider(kind: SandboxProviderKind | str) -> SandboxProvider:
@@ -25,5 +24,10 @@ def get_sandbox_provider(kind: SandboxProviderKind | str) -> SandboxProvider:
         from proliferate.integrations.sandbox.e2b import E2BSandboxProvider
 
         return E2BSandboxProvider()
+
+    if resolved is SandboxProviderKind.kubernetes:
+        from proliferate.integrations.sandbox.kubernetes import KubernetesSandboxProvider
+
+        return KubernetesSandboxProvider()
 
     raise SandboxProviderConfigurationError(f"Unsupported sandbox provider: {resolved}")

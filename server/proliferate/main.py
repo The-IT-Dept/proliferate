@@ -99,6 +99,13 @@ def _validate_cloud_billing_configuration() -> None:
     billing_mode = settings.cloud_billing_mode
     if billing_mode == "off":
         return
+    # This guard is E2B-specific (a missing API key). Non-E2B providers (e.g.
+    # Kubernetes) have no equivalent "missing credential" failure mode here —
+    # their overall readiness is covered by sandbox_provisioning_configured
+    # elsewhere — so skip it entirely rather than crash-looping a
+    # SANDBOX_PROVIDER=kubernetes deploy.
+    if settings.sandbox_provider != "e2b":
+        return
     if not settings.e2b_api_key:
         raise RuntimeError(
             f"cloud_billing_mode={billing_mode} requires "
@@ -112,9 +119,11 @@ def _validate_e2b_template_configuration() -> None:
     # E2B_API_KEY, forget E2B_TEMPLATE_NAME). Partial cloud configuration
     # disables the optional cloud-workspace capability and logs a loud warning;
     # cloud-provisioning *requests* then fail with a specific, actionable error
-    # (see `settings.cloud_provisioning_config_error` consumers) instead of
-    # taking down auth and every other control-plane surface at boot.
-    config_error = settings.cloud_provisioning_config_error
+    # (see `settings.sandbox_provisioning_config_error` consumers) instead of
+    # taking down auth and every other control-plane surface at boot. Uses the
+    # provider-agnostic predicate so a SANDBOX_PROVIDER=kubernetes deploy (which
+    # is always fully configured) never hits this warning.
+    config_error = settings.sandbox_provisioning_config_error
     if config_error is not None:
         logging.getLogger("proliferate.startup").warning(
             "Cloud workspace provisioning is DISABLED: %s Base control-plane "

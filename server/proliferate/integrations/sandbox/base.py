@@ -10,6 +10,7 @@ from typing import Any, Protocol, runtime_checkable
 
 class SandboxProviderKind(StrEnum):
     e2b = "e2b"
+    kubernetes = "kubernetes"
 
 
 class SandboxProviderError(RuntimeError):

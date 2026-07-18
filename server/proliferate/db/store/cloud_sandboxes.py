@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from proliferate.config import settings
 from proliferate.db.models.cloud.sandboxes import CloudSandbox
 from proliferate.utils.time import utcnow
 
@@ -165,7 +166,7 @@ async def ensure_personal_cloud_sandbox(
     now = utcnow()
     row = CloudSandbox(
         owner_user_id=user_id,
-        sandbox_type="e2b",
+        sandbox_type=settings.sandbox_provider,
         provider_sandbox_id=None,
         status="creating",
         anyharness_base_url=None,
