@@ -150,6 +150,13 @@ impl InboundDoor {
                 source: source.clone(),
                 payload,
             });
+            crate::live::sessions::push_notify::notify_interaction(
+                &self.workspace_id,
+                &self.session_id,
+                &request_id,
+                &InteractionKind::Permission,
+                &title,
+            );
 
             pending_wait
         };

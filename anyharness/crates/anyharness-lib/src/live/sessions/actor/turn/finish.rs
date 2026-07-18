@@ -137,6 +137,24 @@ impl SessionActor {
                     turn_id = ?sink_snapshot_before_turn_end.current_turn_id,
                     "session.actor.prompt.turn_ended_emitted"
                 );
+                // A TurnEnded that still leaves interactions unresolved (the
+                // harness's own turn completed without blocking on them, e.g.
+                // a fire-and-forget MCP elicitation) needs its own push: the
+                // interaction_requested push already fired when the
+                // interaction was first raised (driver/inbound/*.rs), but this
+                // is the fire-and-forget catch-up the push plan calls for when
+                // a turn ends leaving the session AwaitingInteraction.
+                // notify_interaction's per-process request_id dedupe makes
+                // this safe to call unconditionally for every still-pending
+                // interaction here.
+                for pending in self.handle.execution_snapshot().await.pending_interactions {
+                    crate::live::sessions::push_notify::notify_awaiting(
+                        &self.workspace_id,
+                        &self.session_id,
+                        &pending.request_id,
+                        &pending.title,
+                    );
+                }
                 let now = chrono::Utc::now().to_rfc3339();
                 self.handle
                     .set_execution_phase(SessionExecutionPhase::Idle)

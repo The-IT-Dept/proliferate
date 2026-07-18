@@ -60,11 +60,18 @@ impl InboundDoor {
             sink.interaction_requested(InteractionRequestedEvent {
                 request_id: request_id.clone(),
                 kind: InteractionKind::McpElicitation,
-                title,
+                title: title.clone(),
                 description,
                 source,
                 payload: InteractionPayload::McpElicitation(payload),
             });
+            crate::live::sessions::push_notify::notify_interaction(
+                &self.workspace_id,
+                &self.session_id,
+                &request_id,
+                &InteractionKind::McpElicitation,
+                &title,
+            );
 
             pending_wait
         };
@@ -124,11 +131,18 @@ impl InboundDoor {
             sink.interaction_requested(InteractionRequestedEvent {
                 request_id: request_id.clone(),
                 kind: InteractionKind::McpElicitation,
-                title,
+                title: title.clone(),
                 description,
                 source,
                 payload: InteractionPayload::McpElicitation(payload),
             });
+            crate::live::sessions::push_notify::notify_interaction(
+                &self.workspace_id,
+                &self.session_id,
+                &request_id,
+                &InteractionKind::McpElicitation,
+                &title,
+            );
 
             pending_wait
         };

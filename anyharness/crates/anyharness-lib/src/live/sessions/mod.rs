@@ -5,6 +5,7 @@ pub mod handle;
 mod manager;
 pub mod model;
 pub mod probe;
+mod push_notify;
 mod rendezvous;
 mod replay;
 mod sink;

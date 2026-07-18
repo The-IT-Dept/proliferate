@@ -67,11 +67,18 @@ impl InboundDoor {
             sink.interaction_requested(InteractionRequestedEvent {
                 request_id: request_id.clone(),
                 kind: InteractionKind::UserInput,
-                title,
+                title: title.clone(),
                 description,
                 source,
                 payload,
             });
+            crate::live::sessions::push_notify::notify_interaction(
+                &self.workspace_id,
+                &self.session_id,
+                &request_id,
+                &InteractionKind::UserInput,
+                &title,
+            );
 
             pending_wait
         };
@@ -160,11 +167,18 @@ impl InboundDoor {
             sink.interaction_requested(InteractionRequestedEvent {
                 request_id: request_id.clone(),
                 kind: InteractionKind::UserInput,
-                title,
+                title: title.clone(),
                 description,
                 source,
                 payload,
             });
+            crate::live::sessions::push_notify::notify_interaction(
+                &self.workspace_id,
+                &self.session_id,
+                &request_id,
+                &InteractionKind::UserInput,
+                &title,
+            );
 
             pending_wait
         };
