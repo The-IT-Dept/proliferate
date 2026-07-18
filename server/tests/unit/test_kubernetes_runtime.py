@@ -346,14 +346,19 @@ def test_create_sandbox_builds_pvc_pod_service_and_returns_handle(
     assert container.command == ["sleep", "infinity"]
     assert container.ports[0].name == "runtime"
     assert container.ports[0].container_port == 8457
-    # The PVC-backed volume mounts at the workspace path, not at /home/user:
-    # the baked runtime (anyharness binary, worker/supervisor,
-    # pre-installed agents) lives in the image layer under /home/user and
-    # must stay visible on every fresh pod. Kubernetes does not copy image
-    # content into a PVC, so mounting the (empty) PVC at /home/user would
-    # mask that baked runtime entirely.
+    # The PVC-backed volume mounts twice via subPath -- workspace and the
+    # persisted credential dirs -- never at /home/user itself: the baked
+    # runtime (anyharness binary, worker/supervisor, pre-installed agents)
+    # lives in the image layer under /home/user and must stay visible on
+    # every fresh pod. Kubernetes does not copy image content into a PVC, so
+    # mounting the (empty) PVC at /home/user would mask that baked runtime
+    # entirely.
     assert container.volume_mounts[0].mount_path == "/home/user/workspace"
     assert container.volume_mounts[0].name == "workspace"
+    assert container.volume_mounts[0].sub_path == "workspace"
+    assert container.volume_mounts[1].mount_path == "/home/user/.persist"
+    assert container.volume_mounts[1].name == "workspace"
+    assert container.volume_mounts[1].sub_path == "home-persist"
     assert container.resources.requests == {"cpu": "500m", "memory": "1Gi"}
     assert container.resources.limits == {"cpu": "2", "memory": "4Gi"}
     assert pod.spec.security_context.run_as_user == 1000

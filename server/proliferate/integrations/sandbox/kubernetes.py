@@ -29,6 +29,8 @@ from proliferate.constants.sandbox.kubernetes import (
     K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS,
     K8S_DEFAULT_READY_TIMEOUT_SECONDS,
     K8S_DEFAULT_RUNTIME_USER,
+    K8S_HOME_PERSIST_MOUNT_PATH,
+    K8S_HOME_PERSIST_SUBPATH,
     K8S_READY_POLL_INTERVAL_SECONDS,
     K8S_RUN_AS_ID,
     K8S_RUNTIME_BINARY_PATH,
@@ -38,6 +40,7 @@ from proliferate.constants.sandbox.kubernetes import (
     K8S_SANDBOX_NAME_PREFIX,
     K8S_TEMPLATE_VERSION,
     K8S_USER_HOME,
+    K8S_WORKSPACE_SUBPATH,
     K8S_WORKSPACE_VOLUME_NAME,
 )
 from proliferate.integrations.sandbox.base import (
@@ -403,8 +406,9 @@ class KubernetesSandboxProvider:
                 k8s.V1ContainerPort(name="runtime", container_port=K8S_RUNTIME_PORT),
             ],
             volume_mounts=[
-                # The PVC only backs the workspace subdirectory, not the whole
-                # home directory. The sandbox image bakes the anyharness
+                # The PVC backs two subdirectories of home, not the whole
+                # home directory, via two subPath mounts off the SAME
+                # PVC-backed volume. The sandbox image bakes the anyharness
                 # binary, worker/supervisor, and pre-installed agents into
                 # /home/user (see sandbox/Dockerfile); those live in the image
                 # layer and are present on every fresh pod. Kubernetes does
@@ -417,8 +421,23 @@ class KubernetesSandboxProvider:
                 # resume (pod delete -> recreate on the same PVC); worker/
                 # runtime process state is ephemeral per-pod and
                 # re-established by the connect path's relaunch, consistent
-                # with `preserves_processes_on_resume=False`.
-                k8s.V1VolumeMount(name=K8S_WORKSPACE_VOLUME_NAME, mount_path=K8S_RUNTIME_WORKDIR),
+                # with `preserves_processes_on_resume=False`. The second mount,
+                # at /home/user/.persist, backs the agent subscription
+                # credential dirs -- sandbox/Dockerfile symlinks ~/.claude,
+                # ~/.claude.json, and ~/.codex into it so a `claude /login` /
+                # `codex login` done in the sandbox survives pod pause/resume
+                # too (subPath, not a mount at /home/user, so it doesn't mask
+                # the baked runtime either).
+                k8s.V1VolumeMount(
+                    name=K8S_WORKSPACE_VOLUME_NAME,
+                    mount_path=K8S_RUNTIME_WORKDIR,
+                    sub_path=K8S_WORKSPACE_SUBPATH,
+                ),
+                k8s.V1VolumeMount(
+                    name=K8S_WORKSPACE_VOLUME_NAME,
+                    mount_path=K8S_HOME_PERSIST_MOUNT_PATH,
+                    sub_path=K8S_HOME_PERSIST_SUBPATH,
+                ),
             ],
             resources=k8s.V1ResourceRequirements(
                 requests={
