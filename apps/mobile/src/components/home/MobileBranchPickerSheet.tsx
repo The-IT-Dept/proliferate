@@ -111,7 +111,7 @@ export function MobileBranchPickerSheet({
             {loading ? (
               <BranchMessage text="Loading branches" />
             ) : filteredBranches.length === 0 ? (
-              <BranchMessage text={branches.length === 0 ? "No branches found" : "No matching branches"} />
+              <BranchMessage text="No branches found" />
             ) : (
               filteredBranches.map((branch) => (
                 <BranchRow
