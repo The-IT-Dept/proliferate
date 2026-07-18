@@ -245,3 +245,36 @@ Unrelated to this work: `anyharness-lib`/`proliferate-worker` pull
 2025-12-01) rejects (`E0658`). `cargo build --workspace` exits 101 at HEAD. Phase
 2/3/4 touches no Rust, so this is out of scope, but `cargo` cannot be used as a
 green gate in this environment until the toolchain/dep is updated.
+
+## CI cleanup status — a Phase 1 regression was fixed; the rest stays deferred
+
+**Fixed in this pass (committed):** `scripts/ci-cd/*.test.mjs` was RED at HEAD.
+Phase 1 deleted `apps/desktop/`, but `release-title-propagation.test.mjs` still
+read `release-desktop.yml`/`_deploy-desktop.yml`/`apps/desktop/infra/main.tf`
+(→ `ENOENT`). Its five desktop-release/title cases were removed (the runtime
+build-stamp case kept), so `node --test scripts/ci-cd/*.test.mjs` is green again.
+(Phase 1's gate never ran the ci-cd node tests, so this slipped through.)
+
+**Latent Phase 1 breakage still present (part of the deferred §1-5 CI PR):**
+- `scripts/ci-cd/prepare-artifact-release.mjs` reads deleted
+  `apps/desktop/{package.json,src-tauri/tauri.conf.json,src-tauri/Cargo.toml}` at
+  runtime; its *test* passes only because it synthesizes those files in a temp
+  fixture, so the **real** CI step would fail. `ARTIFACT_SURFACES` still contains
+  `"desktop"`.
+- `release-desktop.yml`/`_deploy-desktop.yml` + the `deploy-desktop` jobs
+  (`deploy-staging.yml`, `promote-production.yml`) + `desktop-frontend`
+  (`ci.yml`) still reference the deleted desktop app.
+
+**Why the rest wasn't landed here:** the desktop *surface* removal is not a
+self-contained hub edit — `SURFACES`/`classifyFile` in `detect-deploy-surfaces.mjs`
+feeds `prepare-artifact-release.mjs` (via `parseSurfaceList`, which throws on an
+unknown surface) and its test; `pr-metadata.mjs` carries its own `area:desktop`;
+and the candidate builders (`build-{cloud,local,selfhost}-qualification-candidates`)
++ `create-release-tags` + `core-release-scenario-manifest` all thread a "desktop"
+release lane. It must be removed wholesale (with per-reference care — "desktop"
+also means an unrelated agent-catalog *seed* in `detect-deploy-surfaces`), as the
+single focused CI PR already scoped in §1-5 above. Node gate for that PR:
+`node --test scripts/ci-cd/*.test.mjs` + `pytest scripts/test_check_docs.py`
+(the latter's two "desktop" refs are synthetic fixtures — green today — but
+update the `valid_env_var_entry(workflow="release-desktop")` case when
+`release-desktop.yml` is deleted).
