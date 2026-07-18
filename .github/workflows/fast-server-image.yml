@@ -1,0 +1,92 @@
+name: Fast Server Image (no tests)
+
+# Image-only build+push of proliferate-server, WITHOUT the lint/test gate.
+# For fast internal iteration when we already know the code is good. Trigger by
+# pushing a `fastserver-v<version>` tag, or via workflow_dispatch with a version.
+# Mirrors the docker job of server-ci.yml (same tags, same version-pin build-args)
+# but skips the ~50-min pytest gate.
+
+on:
+  push:
+    tags: ["fastserver-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Image version, e.g. 0.3.41-itdept.4"
+        required: true
+        type: string
+      ref:
+        description: "Git ref (branch/sha) to build; defaults to this ref"
+        required: false
+        type: string
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        env:
+          INPUT_VERSION: ${{ inputs.version || '' }}
+        run: |
+          set -euo pipefail
+          GHCR_IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/proliferate-server"
+          if [[ "${GITHUB_REF:-}" == refs/tags/fastserver-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/fastserver-v}"
+          else
+            VERSION="${INPUT_VERSION:?A version input is required for workflow_dispatch.}"
+          fi
+          {
+            echo "tags<<EOF"
+            printf '%s\n' "${GHCR_IMAGE}:${VERSION}" "${GHCR_IMAGE}:stable"
+            echo "EOF"
+            echo "version=${VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Resolve version pins
+        id: pins
+        working-directory: .
+        run: |
+          set -euo pipefail
+          desktop_version="$(jq -r '.version' apps/desktop/package.json)"
+          runtime_version="$(jq -r '.version' anyharness/sdk/package.json)"
+          worker_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' anyharness/crates/proliferate-worker/Cargo.toml | head -n 1)"
+          : "${worker_version:?Failed to read the proliferate-worker crate version.}"
+          {
+            echo "desktop_version=${desktop_version}"
+            echo "runtime_version=${runtime_version}"
+            echo "worker_version=${worker_version}"
+            echo "min_desktop_version=${desktop_version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: server/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            SERVER_VERSION=${{ steps.tags.outputs.version }}
+            DESKTOP_VERSION=${{ steps.pins.outputs.desktop_version }}
+            RUNTIME_VERSION=${{ steps.pins.outputs.runtime_version }}
+            WORKER_VERSION=${{ steps.pins.outputs.worker_version }}
+            MIN_DESKTOP_VERSION=${{ steps.pins.outputs.min_desktop_version }}
