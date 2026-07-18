@@ -151,10 +151,11 @@ describe("useWorkspaces", () => {
     expect(result.current.isSuccess).toBe(false);
   });
 
-  it("surfaces cloud workspaces from the cloud list without a local runtime", () => {
+  it("surfaces cloud workspaces from the cloud list without a local runtime", async () => {
     // The collections query is disabled without a runtimeUrl, so cloud
-    // workspaces must come from the dedicated cloud list merged in by
-    // useWorkspaces — otherwise the sidebar renders empty on the home screen.
+    // workspaces must be synced into the collections cache from the dedicated
+    // cloud list by useWorkspaces — otherwise the sidebar renders empty and the
+    // selection flow (which reads the same cache) fails "Workspace not found".
     mocks.cloudActive = true;
     mocks.cloudVisible = { data: [makeCloudWorkspace()], dataUpdatedAt: 1 };
     useHarnessConnectionStore.setState({
@@ -163,14 +164,23 @@ describe("useWorkspaces", () => {
       error: null,
     });
 
-    const { result } = renderUseWorkspaces();
+    const { result, queryClient } = renderUseWorkspaces();
 
+    await waitFor(() =>
+      expect(result.current.data?.cloudWorkspaces.map((workspace) => workspace.id)).toEqual([
+        "cloud-1",
+      ])
+    );
     expect(mocks.workspacesList).not.toHaveBeenCalled();
     expect(mocks.repoRootsList).not.toHaveBeenCalled();
     expect(result.current.fetchStatus).toBe("idle");
-    expect(result.current.data?.cloudWorkspaces.map((workspace) => workspace.id)).toEqual([
-      "cloud-1",
-    ]);
+    // The imperative cache snapshot (what the selection flow reads) must also
+    // see it, since we write into the cache rather than only the hook return.
+    expect(
+      queryClient.getQueryData<ReturnType<typeof buildWorkspaceCollections>>(
+        workspaceCollectionsKey("", true, null),
+      )?.cloudWorkspaces.map((workspace) => workspace.id),
+    ).toEqual(["cloud-1"]);
   });
 
   it("does not blank cached cloud workspaces before the cloud list resolves", () => {

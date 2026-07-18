@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useEffect } from "react";
 import type { AnyHarnessRequestOptions } from "@anyharness/sdk";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { WorkspaceCollections } from "#product/lib/domain/workspaces/cloud/collections";
 import {
   buildWorkspaceCollections,
@@ -99,6 +99,7 @@ export function useWorkspaces(options?: UseWorkspacesOptions) {
   const authUserId = useProductAuthUserId();
   const { cloudActive } = useCloudAvailabilityState();
   const canQuery = (options?.enabled ?? true) && hasLocalRuntime;
+  const queryClient = useQueryClient();
   const {
     getWorkspaceCollectionsCacheState,
     queryKey,
@@ -243,21 +244,31 @@ export function useWorkspaces(options?: UseWorkspacesOptions) {
         : false,
   });
 
-  const data = useMemo<WorkspaceCollections | undefined>(() => {
-    const base = collectionsQuery.data;
-    // The cloud list defaults to [] before it resolves; only override once it
-    // has actually loaded (dataUpdatedAt > 0), so a mid-load empty result never
+  // Sync the authoritative cloud list into the collections CACHE (not just this
+  // hook's return) so every reader sees cloud workspaces regardless of a local
+  // runtime — including imperative cache snapshots like the workspace-selection
+  // flow (getWorkspaceCollectionsFromCache), which reads the cache directly and
+  // would otherwise fail "Workspace not found." The collections cache is keyed
+  // by runtimeUrl; this writes into the current key, and a disabled collections
+  // query still returns that cached value.
+  useEffect(() => {
+    // The cloud list defaults to [] before it resolves; only write once it has
+    // actually loaded (dataUpdatedAt > 0), so a mid-load empty result never
     // blanks out cloud workspaces the collections cache already holds.
-    const cloudLoaded = cloudWorkspacesQuery.dataUpdatedAt > 0;
-    if (!cloudLoaded) {
-      return base;
+    if (cloudWorkspacesQuery.dataUpdatedAt === 0) {
+      return;
     }
     const cloudWorkspaces = cloudWorkspacesQuery.data;
-    if (base === undefined) {
-      return buildWorkspaceCollections([], [], cloudWorkspaces);
-    }
-    return { ...base, cloudWorkspaces };
-  }, [collectionsQuery.data, cloudWorkspacesQuery.data, cloudWorkspacesQuery.dataUpdatedAt]);
+    queryClient.setQueryData<WorkspaceCollections>(queryKey, (prev) => {
+      if (prev === undefined) {
+        return buildWorkspaceCollections([], [], cloudWorkspaces);
+      }
+      if (prev.cloudWorkspaces === cloudWorkspaces) {
+        return prev;
+      }
+      return { ...prev, cloudWorkspaces };
+    });
+  }, [queryClient, queryKey, cloudWorkspacesQuery.data, cloudWorkspacesQuery.dataUpdatedAt]);
 
-  return { ...collectionsQuery, data };
+  return collectionsQuery;
 }
