@@ -155,3 +155,93 @@ refresh}` + `pages.py`; trim `service.py`/`models.py` to `github_oauth_enabled` 
 Contingencies: repoint `auth/jwt.py` `BearerTransport(tokenUrl=...)` off `/auth/desktop/token`;
 migrate bearer-login fixtures (`tests/release/**`, `tests/intent/**`) to
 `/auth/mobile/password/login`; update/remove the ~8 desktop auth server test files.
+
+---
+
+# SECOND-PASS FINDINGS (2026-07-18/19) — blockers that reshape the remaining plan
+
+A second agent picked up Phase 2/3. Two hard couplings were discovered that
+change how (and whether) the remaining sub-tasks can be landed green. **No new
+production code changed in this pass; the tree is at the same green HEAD.**
+
+## BLOCKER 1 — the pytest suite BUILDS its schema by running the Alembic migrations
+
+`tests/conftest.py:48` → `run_migrations(TEST_DATABASE_URL)` →
+`tests/postgres.py:85` → `command.upgrade(build_alembic_config(url), "head")`.
+
+Consequence: **there is no safe "author the migrations only, don't apply" path.**
+Any migration added to the chain (new head from `775b33c8d1f5`) is executed by
+every local pytest run. A migration that drops `desktop_install_id` /
+`worktree_path` / `local_path`, relaxes the local-vs-cloud CHECK constraints to
+`managed_cloud`-only, or drops the local partial-unique indexes will run against
+a schema whose **SQLAlchemy models and materialization/runtime_worker/repository
+tests still map and exercise the local columns/enum values** → those suites go
+RED. "Do not apply to a live/remote DB" is still honored, but locally the suite
+applies them regardless.
+
+**Therefore the DB migrations are inseparable from the Phase 2/3 code+test
+removal.** They must land in the *same* change that (a) drops the columns/enum
+arms from `db/models/cloud/*` + `db/store/*`, (b) drops the local paths from the
+services/response models, (c) regenerates the cloud SDK, (d) prunes the ~53 web
+files that read the removed fields, and (e) updates both the server pytest suites
+and the web vitest suites. Migrations authored ahead of that break green on the
+next `pytest` invocation — do not commit them alone.
+
+(The followups' earlier "step 1: web-decoupled server-internal removals that are
+safe to land now" is **not** actually decoupled: the web client calls the
+local-materialization endpoints — 16 `MaterializationIntent` + 18
+`ReportMaterialization` refs in `apps/packages/product-client` — and the
+desktop-worker enroll/revoke endpoints via `ensure-desktop-worker.ts` /
+`use-desktop-worker-enrollment.ts`; and the DB CHECK constraints are exercised by
+the materialization tests. So even the "safe now" list is web+test coupled.)
+
+**Net: Phase 2 (server local removal) + Phase 3 (web local surface) + the 3
+migrations + both test suites are ONE big-bang coupled change.** No small green
+slice of it exists (each field/enum/column removal fans out server model → store
+→ response → SDK → web readers → tests → migration simultaneously). Plan it as a
+single large PR verified green as a whole: `cargo`(N/A here, see below),
+`pnpm web:typecheck`, the server pytest suites, and the web vitest suites.
+
+## BLOCKER 2 — the `/auth/desktop/*` DELETE set has a pervasive (not clean-class) test tail
+
+The Phase 0 KEEP/DELETE table is correct and the *source* edit is small and safe
+(trim `api.py`/`models.py`/`service.py` to the two probes + `github_oauth_enabled`
++ the Customer.io login-sync helpers that `auth/identity/service.py` imports;
+delete `pages.py`; repoint `jwt.py` `tokenUrl` → `/auth/mobile/token`; migrate the
+shared bearer helper `tests/helpers/desktop_auth.py` to mint the access+refresh
+pair **in-process** via `get_jwt_strategy().write_token` — no endpoint needed,
+which un-breaks the ~16 cloud integration tests that only need a bearer token).
+
+**But `server/tests/integration/test_auth_flow.py` (2214 lines) is coupled to the
+deleted endpoints far beyond the two desktop test classes.** `/auth/desktop/token`
++ `/auth/desktop/refresh` are used as the *generic* session-establishment and
+revocation mechanism across `TestPasswordAuthFlow` (password-change revocation),
+`TestWebMobileProductAuthFlow` (OAuth start + code exchange + account linking),
+and `TestRefreshToken`; and the desktop-*surface* identity tests
+(`test_desktop_github_login_uses_shared_identity_callback`,
+`test_desktop_google_link_uses_desktop_redirect`) also exchange their auth code
+via `/auth/desktop/token`. Cleanly deleting the endpoints requires rewriting the
+whole file's session mechanism onto `/auth/{web,mobile}/*` (mobile `/token` is a
+drop-in for the code+PKCE exchange; `/refresh` → `/auth/mobile/session/refresh`;
+delete the pure-PKCE/browser-flow cases; keep the two `/github/availability`
+probe cases). That is a focused sub-project on its own and was attempted then
+reverted here to preserve green. **Do it in the same PR as the auth-surface
+`{web,mobile,desktop}` switch pruning** (the desktop-surface identity tests die
+with the desktop arm anyway).
+
+Reusable source-side sketch that verified green in isolation (server imports
+cleanly; only pytest was red): `api.py` → keep `desktop_auth_methods` +
+`github_availability`; `models.py` → keep `AuthMethodsResponse` +
+`OAuthAvailabilityResponse`; `service.py` → keep `github_oauth_enabled` +
+`sync/schedule_customerio_desktop_authenticated_user_sync`; `identity/service.py`
+→ import `schedule_signup_slack_notification` + `SignupSlackNotification` from
+`proliferate.server.notifications` (not from `auth.desktop.service`).
+
+## Rust `cargo build --workspace` is RED at HEAD (pre-existing, environmental)
+
+Unrelated to this work: `anyharness-lib`/`proliferate-worker` pull
+`rusqlite → libsqlite3-sys 0.38.1`, whose `build.rs` uses the unstable
+`cfg_select!` macro that the installed toolchain (`rustc 1.93.0-nightly`, built
+2025-12-01) rejects (`E0658`). `cargo build --workspace` exits 101 at HEAD. Phase
+2/3/4 touches no Rust, so this is out of scope, but `cargo` cannot be used as a
+green gate in this environment until the toolchain/dep is updated.
