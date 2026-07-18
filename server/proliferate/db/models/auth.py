@@ -406,6 +406,37 @@ class InstanceSetupToken(Base):
     )
 
 
+class UserPushDevice(Base):
+    """A device registered to receive Expo push notifications for a user.
+
+    One row per (user, Expo push token): re-registering the same token upserts
+    (clearing ``disabled_at``) instead of duplicating. ``disabled_at`` is set on
+    unregister or when Expo reports the token as no longer valid
+    (``DeviceNotRegistered``); disabled rows are excluded from delivery but kept
+    for audit rather than deleted.
+    """
+
+    __tablename__ = "user_push_device"
+    __table_args__ = (
+        UniqueConstraint("user_id", "expo_push_token", name="uq_user_push_device_token"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"),
+        index=True,
+    )
+    expo_push_token: Mapped[str] = mapped_column(String(256))
+    platform: Mapped[str] = mapped_column(String(16))  # "ios" | "android"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
+    )
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class PasswordLoginAttempt(Base):
     """Per-bucket password login throttling state."""
 
