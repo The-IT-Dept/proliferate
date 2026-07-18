@@ -449,6 +449,22 @@ class Settings(BaseSettings):
     # the overage rate read this derivation (see ``billing/pricing.py``).
     e2b_list_price_usd_per_hour: str = "2.00"
     pro_compute_margin_multiplier: float = 1.5
+
+    # Kubernetes sandbox provider. Read by KubernetesSandboxProvider
+    # (integrations/sandbox/kubernetes.py). Field names already uppercase to
+    # KUBERNETES_SANDBOX_* env vars under the default (case-insensitive)
+    # pydantic-settings lookup, so no explicit AliasChoices is needed.
+    kubernetes_sandbox_namespace: str = "proliferate-sandboxes"
+    kubernetes_sandbox_image: str = "ghcr.io/the-it-dept/proliferate-sandbox:stable"
+    kubernetes_sandbox_cpu_request: str = "500m"
+    kubernetes_sandbox_cpu_limit: str = "2"
+    kubernetes_sandbox_memory_request: str = "1Gi"
+    kubernetes_sandbox_memory_limit: str = "4Gi"
+    kubernetes_sandbox_storage_class: str = "proxmox-store"
+    kubernetes_sandbox_storage_size: str = "10Gi"
+    # Optional pod serviceAccountName; empty means "let the namespace default
+    # apply" (no serviceAccountName set on the pod spec).
+    kubernetes_sandbox_service_account: str = ""
     proliferate_target_installer_url: str = (
         "https://raw.githubusercontent.com/proliferate-ai/proliferate/main/"
         "install/proliferate-target-install.sh"
