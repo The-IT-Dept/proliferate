@@ -194,7 +194,8 @@
               "command": {
                 "program": "codex",
                 "args": [
-                  "login"
+                  "login",
+                  "--device-auth"
                 ]
               },
               "reusesUserState": true,
