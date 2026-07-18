@@ -2,7 +2,7 @@ import type { ViewStyle } from "react-native";
 import type { GlassStyle } from "expo-glass-effect";
 import type { BlurTint } from "expo-blur";
 import type { GlassTier } from "./resolve-glass-tier";
-import type { GlassTokens } from "./tokens";
+import { isDarkTheme, type GlassTokens } from "./tokens";
 
 /**
  * Pure per-tier backing selection for GlassSurface (design-system.md §3,
@@ -39,15 +39,6 @@ function shapeStyle(variant: GlassSurfaceVariant, tokens: GlassTokens): ViewStyl
     default:
       return { borderRadius: tokens.radius.lg };
   }
-}
-
-// tokens.surface.base is one of exactly two literal hex values from
-// glassTokens (§2.1 `bg`: dark #181818 / light #F5F5F7); comparing against
-// the dark value is a simple, deterministic way to recover which theme a
-// resolved GlassTokens came from without adding a redundant `theme` field
-// to the GlassTokens interface itself.
-function isDarkTheme(tokens: GlassTokens): boolean {
-  return tokens.surface.base === "#181818";
 }
 
 export function backingForTier(

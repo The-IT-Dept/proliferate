@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { glassTokens } from "./tokens";
+import { glassTokens, isDarkTheme } from "./tokens";
 
 describe("glassTokens", () => {
   it("resolves the dark-theme base surface, tint, and body colors from design-system.md", () => {
@@ -79,6 +79,11 @@ describe("glassTokens", () => {
     // always yields the "height / 2" capsule shape from §6 regardless of the
     // element's actual height.
     expect(tokens.radius.capsule).toBe(999);
+  });
+
+  it("isDarkTheme recovers which theme a resolved GlassTokens came from", () => {
+    expect(isDarkTheme(glassTokens("dark"))).toBe(true);
+    expect(isDarkTheme(glassTokens("light"))).toBe(false);
   });
 
   it("spaces on the 4pt grid (§6)", () => {

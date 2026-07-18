@@ -39,6 +39,17 @@ const glassTint = {
   light: "rgba(10,122,255,0.12)",
 } as const;
 
+// tokens.surface.base is one of exactly two literal hex values from
+// glassTokens (§2.1 `bg`: dark #181818 / light #F5F5F7); comparing against
+// the dark value is a simple, deterministic way to recover which theme a
+// resolved GlassTokens came from without adding a redundant `theme` field
+// to the GlassTokens interface itself. Shared by backing-for-tier.ts and
+// ContextCapsule's statusDotColor, which both need to key theme-only
+// semantic colors (blur tint, status tones) off an already-resolved token set.
+export function isDarkTheme(tokens: GlassTokens): boolean {
+  return tokens.surface.base === "#181818";
+}
+
 export function glassTokens(theme: GlassTheme): GlassTokens {
   const dark = theme === "dark";
 
