@@ -1,13 +1,12 @@
 import { useState } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMobileHomeLaunchModel } from "../../hooks/home/derived/use-mobile-home-launch-model";
@@ -134,18 +133,23 @@ export function MobileHomeScreen({
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.select({ ios: "padding", default: undefined })}
-      keyboardVerticalOffset={0}
-    >
-      <ScrollView
+    <View style={styles.root}>
+      {/*
+        KeyboardAwareScrollView (react-native-keyboard-controller) rides the
+        keyboard on iOS/Android using native keyboard tracking, replacing the
+        old KeyboardAvoidingView + manual `behavior`/`keyboardVerticalOffset`
+        platform-select. `useVisualViewportKeyboardInset` stays: it's a
+        web-only fallback (returns 0 on native) for the mobile-web target,
+        which has no native keyboard-controller equivalent to ride.
+      */}
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: scrollContentBottomPadding },
           keyboardInset > 0 && { paddingBottom: scrollContentBottomPadding + keyboardInset },
         ]}
+        bottomOffset={16}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -232,7 +236,7 @@ export function MobileHomeScreen({
         ) : null}
 
         <MobileHomeRecentSection items={recentItems} onOpenChat={onOpenChat} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <MobileHomeRepoPopover
         visible={sheet === "repo"}
@@ -262,7 +266,7 @@ export function MobileHomeScreen({
         selectedRuntimeId={launchModel.selectedRuntime?.id ?? null}
         onRuntimeSelect={launchModel.setRuntimeId}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
