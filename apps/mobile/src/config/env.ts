@@ -1,23 +1,23 @@
 declare const process: {
   env: {
-    EXPO_PUBLIC_PROLIFERATE_API_BASE_URL?: string;
-    EXPO_PUBLIC_PROLIFERATE_ENVIRONMENT?: string;
-    EXPO_PUBLIC_PROLIFERATE_POSTHOG_HOST?: string;
-    EXPO_PUBLIC_PROLIFERATE_POSTHOG_KEY?: string;
-    EXPO_PUBLIC_PROLIFERATE_POSTHOG_SESSION_REPLAY_ENABLED?: string;
-    EXPO_PUBLIC_PROLIFERATE_RELEASE?: string;
-    EXPO_PUBLIC_PROLIFERATE_TELEMETRY_DISABLED?: string;
     EXPO_PUBLIC_PROLIFERATE_DEV_REFRESH_TOKEN?: string;
   };
 };
 declare const __DEV__: boolean | undefined;
 
-const configuredApiBaseUrl = process.env.EXPO_PUBLIC_PROLIFERATE_API_BASE_URL?.trim();
+// The mobile app is cloud-only. It always talks to the single hosted control
+// plane; there is no instance selector and no env-driven base-URL override, so
+// a shipped build cannot be pointed at anything else.
+const CLOUD_API_BASE_URL = "https://proliferate.theitdept.au";
 
-function resolveApiBaseUrl() {
-  if (configuredApiBaseUrl) return configuredApiBaseUrl;
-  if (typeof __DEV__ !== "undefined" && __DEV__) return "http://127.0.0.1:8000";
-  throw new Error("EXPO_PUBLIC_PROLIFERATE_API_BASE_URL is required for mobile builds.");
+// Local development override only. A dev build (`__DEV__`) talks to the API
+// running on the loopback dev server; production/preview builds always use the
+// hosted cloud URL above.
+const DEV_API_BASE_URL = "http://127.0.0.1:8000";
+
+function resolveApiBaseUrl(): string {
+  if (typeof __DEV__ !== "undefined" && __DEV__) return DEV_API_BASE_URL;
+  return CLOUD_API_BASE_URL;
 }
 
 export const mobileEnv = {

@@ -12,18 +12,12 @@
     },
     "preview": {
       "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_PROLIFERATE_API_BASE_URL": "https://app.proliferate.com/api"
-      },
       "ios": {
         "simulator": false
       }
     },
     "production": {
       "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_PROLIFERATE_API_BASE_URL": "https://app.proliferate.com/api"
-      },
       "ios": {
         "image": "latest"
       }
@@ -31,8 +25,7 @@
     "staging": {
       "distribution": "internal",
       "env": {
-        "APP_VARIANT": "staging",
-        "EXPO_PUBLIC_PROLIFERATE_API_BASE_URL": "https://staging-app.proliferate.com/api"
+        "APP_VARIANT": "staging"
       },
       "ios": {
         "image": "latest"
@@ -41,8 +34,7 @@
     "staging-testflight": {
       "autoIncrement": true,
       "env": {
-        "APP_VARIANT": "staging",
-        "EXPO_PUBLIC_PROLIFERATE_API_BASE_URL": "https://staging-app.proliferate.com/api"
+        "APP_VARIANT": "staging"
       },
       "ios": {
         "image": "latest"
