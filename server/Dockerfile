@@ -62,6 +62,15 @@ COPY VERSION VERSION
 ARG VITE_PROLIFERATE_RELEASE=""
 ENV VITE_PROLIFERATE_RELEASE=${VITE_PROLIFERATE_RELEASE}
 
+# Self-hosted instances require sign-in. This flag is read at web-build time
+# (apps/packages/product-client/src/lib/domain/auth/auth-mode.ts); without it the
+# bundle defaults to auth-optional, so anonymous visitors are handed the app
+# shell ("logged in as no one") instead of the sign-in screen, and the instance
+# is usable without authenticating. Baked true here so the compiled bundle
+# enforces auth; override to "false" only for an intentionally open instance.
+ARG VITE_REQUIRE_AUTH="true"
+ENV VITE_REQUIRE_AUTH=${VITE_REQUIRE_AUTH}
+
 # Build the shared packages, then the Web app -> apps/web/dist.
 RUN pnpm shared:build && pnpm web:build
 
