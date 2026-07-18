@@ -4,7 +4,6 @@ packages:
   - "anyharness/tests"
   - "cloud/sdk"
   - "cloud/sdk-react"
-  - "apps/desktop"
   - "apps/mobile"
   - "apps/packages/design"
   - "apps/packages/product-client"
