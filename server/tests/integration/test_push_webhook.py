@@ -325,3 +325,65 @@ class TestInteractionPushWebhook:
             },
         )
         assert response.status_code == 422
+
+    async def test_two_owners_worker_a_token_never_targets_owner_b(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+    ) -> None:
+        # Locks in the security property test_resolves_owner_from_token_
+        # not_request_body only partially covers (it has no second owner to
+        # target): with two distinct owners in the database, worker A's
+        # valid token must enqueue a push for owner A ONLY, never owner B —
+        # even when the body carries fields shaped like an owner/workspace
+        # reference for B. The webhook model has no owner field at all
+        # (extra="ignore"), so any such field is silently dropped; this test
+        # would fail the moment someone ever wired ``user_id`` from the
+        # request body instead of the resolved worker.
+        owner_a = await _create_owner(db_session, email="push-webhook-two-owner-a@example.com")
+        owner_b = await _create_owner(db_session, email="push-webhook-two-owner-b@example.com")
+        token_a, _sandbox_a = await _provision_cloud_sandbox_worker_token(
+            db_session, owner_user_id=owner_a
+        )
+        # Owner B has its own enrolled worker too, so a real row exists for
+        # them in every relevant table — this isn't just "owner B doesn't
+        # exist yet, so nothing to leak".
+        await _provision_cloud_sandbox_worker_token(db_session, owner_user_id=owner_b)
+
+        response = await client.post(
+            WEBHOOK_PATH,
+            json={
+                "sandboxToken": token_a,
+                "workspaceId": "workspace-owner-b",
+                "sessionId": "session-two-owner",
+                "requestId": "request-two-owner",
+                "kind": "permission",
+                "title": "Approve?",
+                # Not a field the model declares — must be silently ignored,
+                # never used to pick the delivery target.
+                "userId": owner_b,
+                "ownerId": owner_b,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {"enqueued": True}
+
+        db_session.expire_all()
+        rows = (
+            (
+                await db_session.execute(
+                    select(BackgroundOutboxTask).where(
+                        BackgroundOutboxTask.task_name == PUSH_SEND_TASK,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        matching = [
+            row for row in rows if row.kwargs_json.get("session_id") == "session-two-owner"
+        ]
+        assert len(matching) == 1
+        assert matching[0].kwargs_json["user_id"] == owner_a
+        assert matching[0].kwargs_json["user_id"] != owner_b
