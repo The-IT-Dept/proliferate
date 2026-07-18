@@ -10,6 +10,11 @@ interface AgentLoginTerminalPanelProps {
   baseUrl: string;
   authToken?: string;
   webSocketAuthTransport?: TerminalWebSocketAuthTransport;
+  // Cloud only: mint a fresh gateway token immediately before every
+  // (re)connect instead of trusting the static `authToken` above, which can
+  // go stale over the course of a slow device-code login. Undefined for
+  // local (no token-TTL concern) — see use-agent-login-terminal-viewport.ts.
+  getAuthToken?: () => Promise<string | undefined>;
   onClose: (kind: string) => void;
   onExit: (kind: string, code: number | null) => void;
   onRestart: () => void;
@@ -20,6 +25,7 @@ export function AgentLoginTerminalPanel({
   baseUrl,
   authToken,
   webSocketAuthTransport,
+  getAuthToken,
   onClose,
   onExit,
   onRestart,
@@ -33,6 +39,7 @@ export function AgentLoginTerminalPanel({
     baseUrl,
     authToken,
     webSocketAuthTransport,
+    getAuthToken,
     visible: Boolean(terminal),
     focusRequestToken: session.focusRequestToken,
     onExit: handleExit,

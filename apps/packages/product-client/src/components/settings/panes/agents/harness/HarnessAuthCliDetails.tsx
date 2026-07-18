@@ -138,6 +138,11 @@ export function CliDetails({
             baseUrl={loginWorkflow.runtimeConnection.baseUrl}
             authToken={loginWorkflow.runtimeConnection.authToken}
             webSocketAuthTransport={loginWorkflow.runtimeConnection.webSocketAuthTransport}
+            // Cloud only: re-mint a fresh gateway token on every (re)connect
+            // instead of trusting the (possibly minutes-old) snapshot above —
+            // see loginWorkflow.getFreshAuthToken. Local has no token-TTL
+            // concern and keeps using the static authToken prop untouched.
+            getAuthToken={surface === "cloud" ? loginWorkflow.getFreshAuthToken : undefined}
             onClose={(kind) => {
               void loginWorkflow.closeAuthTerminal(kind);
             }}

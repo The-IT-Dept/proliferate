@@ -150,6 +150,24 @@ export function useAgentLoginTerminalWorkflow(surface: AgentAuthSurface = "local
       return resolved;
     }, [cloudConnectionInfo]);
 
+  // Token PROVIDER for the terminal viewport's WS (re)connect (not just the
+  // HTTP start/close calls above). `runtimeConnection.authToken` is a
+  // point-in-time snapshot — fine for the instant a connect effect reads it,
+  // but a device-code login can sit open for minutes and the gateway token
+  // is short-lived (WDU slice 04 G4), so any later (re)connect that trusted
+  // the same frozen snapshot risks a WS 1008 close mid-login. The viewport
+  // calls this immediately before every (re)connect on the cloud surface
+  // instead, guaranteeing a live-minted token; local has no token-TTL
+  // concern (query-param auth against the desktop's own runtime) and keeps
+  // using the static prop, so this is never invoked on that path.
+  const getFreshAuthToken = useCallback(async (): Promise<string | undefined> => {
+    if (!isCloud) {
+      return runtime.authToken ?? undefined;
+    }
+    const fresh = await resolveFreshCloudConnection();
+    return fresh.authToken;
+  }, [isCloud, resolveFreshCloudConnection, runtime.authToken]);
+
   const { invalidateAgentLaunchReadinessResources } = useAgentResourcesCache();
   const activeSessionCount = useMemo(
     () => Object.values(sessionsByKind).filter((session) =>
@@ -354,6 +372,7 @@ export function useAgentLoginTerminalWorkflow(surface: AgentAuthSurface = "local
   return {
     closeAuthTerminal,
     connectionAvailable,
+    getFreshAuthToken,
     handleTerminalExit,
     openAuthTerminal,
     refreshAgentReadiness,

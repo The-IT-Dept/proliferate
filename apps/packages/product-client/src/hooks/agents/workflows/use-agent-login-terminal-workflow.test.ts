@@ -259,4 +259,32 @@ describe("useAgentLoginTerminalWorkflow - cloud surface", () => {
       { workspaceId: "cloud:workspace-1" },
     );
   });
+
+  it("re-mints a fresh gateway token on demand via getFreshAuthToken (for the terminal viewport's WS reconnect)", async () => {
+    seedCloudConnection();
+    const { result } = renderHook(() => useAgentLoginTerminalWorkflow("cloud"));
+
+    let token: string | undefined;
+    await act(async () => {
+      token = await result.current.getFreshAuthToken();
+    });
+
+    expect(token).toBe("fresh-token");
+    expect(withFreshCloudSandboxGatewayAccessTokenMock).toHaveBeenCalledWith(
+      state.selectedCloudRuntime.connectionInfo,
+    );
+  });
+
+  it("getFreshAuthToken on the local surface returns the static runtime token without minting anything", async () => {
+    state.runtime = { runtimeUrl: "http://127.0.0.1:8457", authToken: "local-token" };
+    const { result } = renderHook(() => useAgentLoginTerminalWorkflow("local"));
+
+    let token: string | undefined;
+    await act(async () => {
+      token = await result.current.getFreshAuthToken();
+    });
+
+    expect(token).toBe("local-token");
+    expect(withFreshCloudSandboxGatewayAccessTokenMock).not.toHaveBeenCalled();
+  });
 });
