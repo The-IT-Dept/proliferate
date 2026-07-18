@@ -93,6 +93,13 @@ disallow_any_explicit = false
 warn_return_any = false
 
 [[tool.mypy.overrides]]
+# push/expo.py wraps the untyped external Expo push JSON API (request payload
+# shape and response ticket bodies), the same "external, loosely-typed JSON
+# contract" rationale as integrations/ above.
+module = ["proliferate.server.cloud.push.expo"]
+disallow_any_explicit = false
+
+[[tool.mypy.overrides]]
 # Pydantic plugin false positives: class-level Any in BaseModel subclasses is
 # injected by the Pydantic mypy plugin, not real Any usage in the source code.
 module = [
@@ -122,6 +129,7 @@ module = [
     "proliferate.server.cloud.repos.models",
     "proliferate.server.support.models",
     "proliferate.config",
+    "proliferate.server.cloud.push.models",
 ]
 disallow_any_explicit = false
 

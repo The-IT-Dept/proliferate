@@ -33,8 +33,6 @@ CUSTOMERIO_ENGAGEMENT_SYNC_TASK = "customerio.engagement_sync"
 WORKFLOW_DELIVER_TASK = "workflows.deliver"
 WORKFLOW_OBSERVE_TASK = "workflows.observe"
 WORKFLOW_CANCEL_TASK = "workflows.cancel"
-# Name-only for now; wired into TASK_ROUTES/SUPPORTED_OUTBOX_TASKS once the
-# Celery task that consumes it exists (Task 4 of the mobile push plan).
 PUSH_SEND_TASK = "push.send_expo"
 
 TASK_ROUTES: dict[str, dict[str, str]] = {
@@ -45,6 +43,7 @@ TASK_ROUTES: dict[str, dict[str, str]] = {
     WORKFLOW_DELIVER_TASK: {"queue": DEFAULT_QUEUE},
     WORKFLOW_OBSERVE_TASK: {"queue": DEFAULT_QUEUE},
     WORKFLOW_CANCEL_TASK: {"queue": DEFAULT_QUEUE},
+    PUSH_SEND_TASK: {"queue": NOTIFICATIONS_QUEUE},
 }
 
 

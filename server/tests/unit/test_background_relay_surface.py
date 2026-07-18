@@ -17,6 +17,7 @@ from proliferate.background.config import (
     DEFAULT_QUEUE,
     HEALTH_NOOP_TASK,
     PERIODIC_DEFAULT_QUEUE,
+    PUSH_SEND_TASK,
     WORKFLOW_CANCEL_TASK,
     WORKFLOW_DELIVER_TASK,
     WORKFLOW_OBSERVE_TASK,
@@ -74,6 +75,7 @@ async def test_backlog_snapshot_reports_supported_pending_by_family(
         WORKFLOW_DELIVER_TASK: 0,
         WORKFLOW_OBSERVE_TASK: 0,
         WORKFLOW_CANCEL_TASK: 0,
+        PUSH_SEND_TASK: 0,
     }
     assert snapshot.supported_oldest_pending_age_by_family[HEALTH_NOOP_TASK] >= 0
     assert snapshot.supported_oldest_pending_age_by_family[WORKFLOW_DELIVER_TASK] == 0
@@ -116,12 +118,14 @@ async def test_run_relay_tick_publishes_and_snapshots(
         WORKFLOW_DELIVER_TASK: 0,
         WORKFLOW_OBSERVE_TASK: 0,
         WORKFLOW_CANCEL_TASK: 0,
+        PUSH_SEND_TASK: 0,
     }
     assert tick.supported_oldest_pending_age_by_family == {
         HEALTH_NOOP_TASK: 0.0,
         WORKFLOW_DELIVER_TASK: 0.0,
         WORKFLOW_OBSERVE_TASK: 0.0,
         WORKFLOW_CANCEL_TASK: 0.0,
+        PUSH_SEND_TASK: 0.0,
     }
     assert tick.managed_workflows.queued_or_delivering_count == 0
 

@@ -16,6 +16,7 @@ from proliferate.background.celery_app import celery_app
 from proliferate.background.config import (
     BACKGROUND_PUBLISH_TS_HEADER,
     HEALTH_NOOP_TASK,
+    PUSH_SEND_TASK,
     WORKFLOW_CANCEL_TASK,
     WORKFLOW_DELIVER_TASK,
     WORKFLOW_OBSERVE_TASK,
@@ -44,6 +45,7 @@ SUPPORTED_OUTBOX_TASKS = frozenset(
         WORKFLOW_DELIVER_TASK,
         WORKFLOW_OBSERVE_TASK,
         WORKFLOW_CANCEL_TASK,
+        PUSH_SEND_TASK,
     }
 )
 DEFAULT_RELAY_BATCH_SIZE = 50

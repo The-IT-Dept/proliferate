@@ -13,6 +13,7 @@ from proliferate.background.config import (
     NOTIFICATIONS_QUEUE,
     NOTIFICATIONS_SEND_SLACK_TASK,
     PERIODIC_DEFAULT_QUEUE,
+    PUSH_SEND_TASK,
     WORKFLOW_CANCEL_TASK,
     WORKFLOW_DELIVER_TASK,
     WORKFLOW_OBSERVE_TASK,
@@ -44,6 +45,7 @@ def test_celery_app_import_registers_noop_task_without_broker_connection() -> No
     assert WORKFLOW_DELIVER_TASK in celery_app.tasks
     assert WORKFLOW_OBSERVE_TASK in celery_app.tasks
     assert WORKFLOW_CANCEL_TASK in celery_app.tasks
+    assert PUSH_SEND_TASK in celery_app.tasks
     assert celery_app.tasks[HEALTH_NOOP_TASK].run() == "ok"
 
 
@@ -64,6 +66,7 @@ def test_celery_routes_and_queues_match_ratified_names() -> None:
         WORKFLOW_DELIVER_TASK: {"queue": DEFAULT_QUEUE},
         WORKFLOW_OBSERVE_TASK: {"queue": DEFAULT_QUEUE},
         WORKFLOW_CANCEL_TASK: {"queue": DEFAULT_QUEUE},
+        PUSH_SEND_TASK: {"queue": NOTIFICATIONS_QUEUE},
     }
     assert (
         celery_app.amqp.router.route({}, HEALTH_NOOP_TASK, args=(), kwargs={})["queue"].name
@@ -182,6 +185,19 @@ def test_workflow_tasks_retry_escaped_crashes_without_attempt_ceiling() -> None:
         assert task.retry_backoff is True
         assert task.retry_backoff_max == 60
         assert task.max_retries is None
+
+
+def test_push_send_task_retries_transient_failures_without_attempt_ceiling() -> None:
+    # A transient per-token Expo failure (rate limiting, upstream trouble) must
+    # keep retrying rather than silently drop the push; DeviceNotRegistered is
+    # handled separately (the token is disabled, never retried).
+    from proliferate.background.celery_app import celery_app
+
+    task = celery_app.tasks[PUSH_SEND_TASK]
+    assert task.autoretry_for == (Exception,)
+    assert task.retry_backoff is True
+    assert task.retry_backoff_max == 60
+    assert task.max_retries is None
 
 
 def test_celery_queue_selector_rejects_unknown_queue() -> None:

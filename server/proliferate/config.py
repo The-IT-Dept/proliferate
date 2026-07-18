@@ -342,6 +342,10 @@ class Settings(BaseSettings):
     # desktop client adoption of the canonical `<component>@<version>+<sha>`
     # release ID is confirmed (old installed desktop builds send no release).
     support_report_require_client_release: bool = False
+    # Optional Expo "Access Token" (Expo dashboard -> Access Tokens), sent as a
+    # Bearer header on push sends for enhanced security. Expo push delivery
+    # works without one; unset means the header is simply omitted.
+    expo_push_access_token: str = ""
     signups_slack_webhook_url: str = ""
     billing_positive_slack_webhook_url: str = ""
     billing_negative_slack_webhook_url: str = ""
