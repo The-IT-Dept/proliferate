@@ -346,24 +346,30 @@ def test_create_sandbox_builds_pvc_pod_service_and_returns_handle(
     assert container.command == ["sleep", "infinity"]
     assert container.ports[0].name == "runtime"
     assert container.ports[0].container_port == 8457
-    # The PVC-backed volume mounts twice via subPath -- workspace and the
-    # persisted credential dirs -- never at /home/user itself: the baked
-    # runtime (anyharness binary, worker/supervisor, pre-installed agents)
-    # lives in the image layer under /home/user and must stay visible on
-    # every fresh pod. Kubernetes does not copy image content into a PVC, so
-    # mounting the (empty) PVC at /home/user would mask that baked runtime
-    # entirely.
+    # The PVC-backed volume mounts three times via subPath -- workspace and
+    # the two persisted agent credential dirs -- never at /home/user itself:
+    # the baked runtime (anyharness binary, worker/supervisor, pre-installed
+    # agents) lives in the image layer under /home/user and must stay
+    # visible on every fresh pod. Kubernetes does not copy image content
+    # into a PVC, so mounting the (empty) PVC at /home/user would mask that
+    # baked runtime entirely. All three mounts come off the single PVC
+    # volume declared in pod.spec.volumes.
+    assert len(container.volume_mounts) == 3
     assert container.volume_mounts[0].mount_path == "/home/user/workspace"
     assert container.volume_mounts[0].name == "workspace"
     assert container.volume_mounts[0].sub_path == "workspace"
-    assert container.volume_mounts[1].mount_path == "/home/user/.persist"
+    assert container.volume_mounts[1].mount_path == "/home/user/.claude"
     assert container.volume_mounts[1].name == "workspace"
-    assert container.volume_mounts[1].sub_path == "home-persist"
+    assert container.volume_mounts[1].sub_path == "claude"
+    assert container.volume_mounts[2].mount_path == "/home/user/.codex"
+    assert container.volume_mounts[2].name == "workspace"
+    assert container.volume_mounts[2].sub_path == "codex"
     assert container.resources.requests == {"cpu": "500m", "memory": "1Gi"}
     assert container.resources.limits == {"cpu": "2", "memory": "4Gi"}
     assert pod.spec.security_context.run_as_user == 1000
     assert pod.spec.security_context.run_as_group == 1000
     assert pod.spec.security_context.fs_group == 1000
+    assert len(pod.spec.volumes) == 1
     assert pod.spec.volumes[0].persistent_volume_claim.claim_name == name
     assert pod.spec.service_account_name is None
 
@@ -440,7 +446,11 @@ def test_resolve_runtime_context_uses_static_k8s_paths(
     assert context.home_dir == "/home/user"
     assert context.runtime_workdir == "/home/user/workspace"
     assert context.runtime_binary_path == "/home/user/anyharness"
-    assert context.base_env == {"HOME": "/home/user"}
+    assert context.base_env == {
+        "HOME": "/home/user",
+        "CODEX_HOME": "/home/user/.codex",
+        "CLAUDE_CONFIG_DIR": "/home/user/.claude",
+    }
 
 
 # -- get_sandbox_state: phase -> state mapping --------------------------------

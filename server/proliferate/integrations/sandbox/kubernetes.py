@@ -25,12 +25,14 @@ from typing import Any
 from proliferate.config import settings
 from proliferate.constants.sandbox.kubernetes import (
     K8S_APP_LABEL_KEY,
+    K8S_CLAUDE_MOUNT_PATH,
+    K8S_CLAUDE_SUBPATH,
+    K8S_CODEX_MOUNT_PATH,
+    K8S_CODEX_SUBPATH,
     K8S_CONTAINER_NAME,
     K8S_DEFAULT_COMMAND_TIMEOUT_SECONDS,
     K8S_DEFAULT_READY_TIMEOUT_SECONDS,
     K8S_DEFAULT_RUNTIME_USER,
-    K8S_HOME_PERSIST_MOUNT_PATH,
-    K8S_HOME_PERSIST_SUBPATH,
     K8S_READY_POLL_INTERVAL_SECONDS,
     K8S_RUN_AS_ID,
     K8S_RUNTIME_BINARY_PATH,
@@ -406,8 +408,8 @@ class KubernetesSandboxProvider:
                 k8s.V1ContainerPort(name="runtime", container_port=K8S_RUNTIME_PORT),
             ],
             volume_mounts=[
-                # The PVC backs two subdirectories of home, not the whole
-                # home directory, via two subPath mounts off the SAME
+                # The PVC backs three subdirectories of home, not the whole
+                # home directory, via three subPath mounts off the SAME
                 # PVC-backed volume. The sandbox image bakes the anyharness
                 # binary, worker/supervisor, and pre-installed agents into
                 # /home/user (see sandbox/Dockerfile); those live in the image
@@ -416,18 +418,22 @@ class KubernetesSandboxProvider:
                 # volume would, so mounting the (empty, persistent) PVC at
                 # /home/user would mask that baked runtime entirely --
                 # /home/user/anyharness would not exist and connect would
-                # fail with ENOENT on every sandbox. Only the user's workspace
+                # fail with ENOENT on every sandbox. The workspace mount
                 # (repo checkout) is stateful and needs to survive pause/
                 # resume (pod delete -> recreate on the same PVC); worker/
                 # runtime process state is ephemeral per-pod and
                 # re-established by the connect path's relaunch, consistent
-                # with `preserves_processes_on_resume=False`. The second mount,
-                # at /home/user/.persist, backs the agent subscription
-                # credential dirs -- sandbox/Dockerfile symlinks ~/.claude,
-                # ~/.claude.json, and ~/.codex into it so a `claude /login` /
-                # `codex login` done in the sandbox survives pod pause/resume
-                # too (subPath, not a mount at /home/user, so it doesn't mask
-                # the baked runtime either).
+                # with `preserves_processes_on_resume=False`. The other two
+                # mounts back the agent subscription-credential dirs
+                # directly -- ~/.claude (claude's ~/.claude/.credentials.json)
+                # and ~/.codex (codex's ~/.codex/auth.json) -- so a
+                # `claude /login` / `codex login` done in the sandbox
+                # survives pod pause/resume too. These are direct subPath
+                # mounts of the real dirs, not symlinks to a separate
+                # persisted location: symlinking left the target absent on a
+                # fresh PVC, so ~/.claude was a dangling symlink and the
+                # first `claude /login` could neither `mkdir` it (EEXIST on
+                # the symlink name) nor write through it (ENOENT).
                 k8s.V1VolumeMount(
                     name=K8S_WORKSPACE_VOLUME_NAME,
                     mount_path=K8S_RUNTIME_WORKDIR,
@@ -435,8 +441,13 @@ class KubernetesSandboxProvider:
                 ),
                 k8s.V1VolumeMount(
                     name=K8S_WORKSPACE_VOLUME_NAME,
-                    mount_path=K8S_HOME_PERSIST_MOUNT_PATH,
-                    sub_path=K8S_HOME_PERSIST_SUBPATH,
+                    mount_path=K8S_CLAUDE_MOUNT_PATH,
+                    sub_path=K8S_CLAUDE_SUBPATH,
+                ),
+                k8s.V1VolumeMount(
+                    name=K8S_WORKSPACE_VOLUME_NAME,
+                    mount_path=K8S_CODEX_MOUNT_PATH,
+                    sub_path=K8S_CODEX_SUBPATH,
                 ),
             ],
             resources=k8s.V1ResourceRequirements(
@@ -674,7 +685,22 @@ class KubernetesSandboxProvider:
             home_dir=K8S_USER_HOME,
             runtime_workdir=K8S_RUNTIME_WORKDIR,
             runtime_binary_path=K8S_RUNTIME_BINARY_PATH,
-            base_env={"HOME": K8S_USER_HOME},
+            # CODEX_HOME / CLAUDE_CONFIG_DIR point each agent's config and
+            # credential writes at the persisted PVC subPath mounts (see
+            # _build_pod) instead of wherever they'd otherwise resolve under
+            # HOME. codex honors CODEX_HOME directly. claude honors
+            # CLAUDE_CONFIG_DIR for ~/.claude, but ~/.claude.json (the
+            # account marker) lives OUTSIDE ~/.claude and is NOT relocated by
+            # CLAUDE_CONFIG_DIR, so it is not persisted by this design -- the
+            # subscription token itself (~/.claude/.credentials.json) is
+            # persisted, which is what matters for `claude /login` surviving
+            # pause/resume. Whether CLAUDE_CONFIG_DIR can be made to
+            # consolidate .claude.json too is deferred; verify at e2e.
+            base_env={
+                "HOME": K8S_USER_HOME,
+                "CODEX_HOME": K8S_CODEX_MOUNT_PATH,
+                "CLAUDE_CONFIG_DIR": K8S_CLAUDE_MOUNT_PATH,
+            },
         )
 
     def _pause_sandbox(self, sandbox_id: str) -> None:

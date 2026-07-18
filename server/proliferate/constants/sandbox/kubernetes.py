@@ -28,17 +28,21 @@ K8S_SANDBOX_NAME_PREFIX = "sbx-"
 K8S_SANDBOX_LABEL_KEY = "proliferate.io/sandbox"
 K8S_APP_LABEL_KEY = "app"
 
-# The single PVC-backed volume (K8S_WORKSPACE_VOLUME_NAME) is mounted twice
-# via subPath: once for the workspace, once for the persisted credential
-# dirs that sandbox/Dockerfile symlinks ~/.claude, ~/.claude.json, and
-# ~/.codex into (so a subscription `claude /login` / `codex login` survives
-# pod pause/resume). subPath mounts, rather than a single mount at
-# /home/user, keep the baked runtime (anyharness binary, worker/supervisor,
-# pre-installed agents -- see kubernetes.py::_build_pod) visible from the
-# image layer instead of being masked by the (otherwise empty) PVC.
+# The single PVC-backed volume (K8S_WORKSPACE_VOLUME_NAME) is mounted THREE
+# times via subPath, off the SAME PVC: once for the workspace, and once each
+# for the two agent subscription-credential dirs (~/.claude, ~/.codex) so a
+# `claude /login` / `codex login` done in the sandbox survives pod
+# pause/resume instead of being wiped when the pod is recreated. subPath
+# mounts, rather than a single mount at /home/user, keep the baked runtime
+# (anyharness binary, worker/supervisor, pre-installed agents -- see
+# kubernetes.py::_build_pod) visible from the image layer instead of being
+# masked by the (otherwise empty) PVC. Mount paths are derived from
+# K8S_USER_HOME rather than hardcoded.
 K8S_WORKSPACE_SUBPATH = "workspace"
-K8S_HOME_PERSIST_SUBPATH = "home-persist"
-K8S_HOME_PERSIST_MOUNT_PATH = "/home/user/.persist"
+K8S_CLAUDE_SUBPATH = "claude"
+K8S_CLAUDE_MOUNT_PATH = f"{K8S_USER_HOME}/.claude"
+K8S_CODEX_SUBPATH = "codex"
+K8S_CODEX_MOUNT_PATH = f"{K8S_USER_HOME}/.codex"
 
 # Pod internals.
 K8S_CONTAINER_NAME = "sandbox"
