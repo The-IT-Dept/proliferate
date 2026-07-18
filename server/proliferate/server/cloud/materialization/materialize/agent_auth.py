@@ -331,6 +331,26 @@ async def materialize_agent_auth(
         # No resolvable cloud sources: delete the file so the reader finds none
         # (contract §3 — empty renders to native; cloud launch fail-closes in the
         # runtime launcher, not here).
+        #
+        # This does NOT disable a native (CLI-login) harness whose credentials
+        # already exist in the sandbox (M5 task A's persisted ~/.claude,
+        # ~/.codex, ...): the Rust read plane treats "state.json absent",
+        # "harness absent from state.json", and "harness present with empty
+        # sources" identically — all three resolve to
+        # `AgentRuntimeAuthProfile::Native` (empty launch delta), see
+        # anyharness-lib route_auth/mod.rs:19-21 and route_auth/profile.rs's
+        # `resolve_profile` (+ its `no_state_file_is_native` /
+        # `missing_harness_falls_back_to_native` / `empty_sources_is_native`
+        # unit tests). Readiness for that native state is ALSO independent of
+        # this file: `resolve_agent_with_env` (readiness/service.rs) derives
+        # `credential_state` purely from env vars + on-disk credential
+        # detection (`detect_auth_slots` -> `ReadyViaLocalAuth`), and
+        # `resolve_launch_agent` only ever consults route_auth to UPGRADE an
+        # otherwise-not-ready status — never to downgrade one. So deleting
+        # (or never writing) this file is a no-op for a harness that is ready
+        # via its own persisted local credentials; "cloud launch fail-closes"
+        # here means gateway/api_key routes that just went unsatisfiable fall
+        # back to native truth, not that native itself is disabled.
         await sandbox_io.remove_owned_files(
             ctx.target,
             operation_id=ctx.sandbox.id,

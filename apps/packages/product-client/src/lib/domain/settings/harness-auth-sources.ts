@@ -101,7 +101,22 @@ export function buildDesiredSources(
   return sources;
 }
 
-/** True when nothing is wired — the implicit native (CLI-own-login) state. */
+/**
+ * True when nothing is wired — the implicit native (CLI-own-login) state.
+ *
+ * This is a PURE, surface-agnostic detector: it says nothing about whether
+ * native/CLI-login is actually usable right now. That's decided elsewhere,
+ * per surface:
+ * - local: always usable (the harness's own CLI owns auth on this machine).
+ * - cloud: usable once a cloud sandbox connection exists
+ *   (`useAgentLoginTerminalWorkflow`'s `connectionAvailable`, consumed by
+ *   `HarnessAuthCliDetails`) AND the org policy's `allowedRoutes` permits
+ *   "native" (`use-harness-auth-editor.ts`'s `nativeDisallowed`, mirroring
+ *   the server's `AGENT_AUTH_POLICY_ROUTES`/`_selection_set_policy_violation`
+ *   in `agent_gateway.py`, which already allow it by default). Do not add
+ *   cloud-eligibility branching here — keep this a plain selection-state
+ *   predicate.
+ */
 export function isNativeState(state: HarnessAuthEditorState): boolean {
   return !state.gatewayEnabled && !state.rows.some((row) => row.enabled);
 }
