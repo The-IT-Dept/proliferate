@@ -13,6 +13,15 @@ export { resolveGlassTier, type GlassCaps, type GlassTier };
  * it's read once. "Increase Contrast" on iOS maps to
  * `isDarkerSystemColorsEnabled()` / `darkerSystemColorsChanged`
  * (Settings > Accessibility > Display & Text Size > Increase Contrast).
+ *
+ * `isReduceTransparencyEnabled`/`isDarkerSystemColorsEnabled` are iOS-only
+ * concepts react-native-web's AccessibilityInfo shim does not implement —
+ * calling them there throws a TypeError rather than resolving/rejecting
+ * (unlike its `addEventListener`, which is a safe no-op for unrecognized
+ * event names), so both are feature-detected before being called. Missing on
+ * a platform is treated as "not set" (false), which resolves to the
+ * native/blur tier rather than the degraded opaque/bordered tiers meant for
+ * users who explicitly enabled the corresponding OS accessibility setting.
  */
 export function useGlassCapability(): GlassTier {
   const [glassApiAvailable] = useState(() => isGlassEffectAPIAvailable());
@@ -22,12 +31,16 @@ export function useGlassCapability(): GlassTier {
   useEffect(() => {
     let mounted = true;
 
-    AccessibilityInfo.isReduceTransparencyEnabled().then((enabled) => {
-      if (mounted) setReduceTransparency(enabled);
-    });
-    AccessibilityInfo.isDarkerSystemColorsEnabled().then((enabled) => {
-      if (mounted) setIncreaseContrast(enabled);
-    });
+    if (typeof AccessibilityInfo.isReduceTransparencyEnabled === "function") {
+      AccessibilityInfo.isReduceTransparencyEnabled().then((enabled) => {
+        if (mounted) setReduceTransparency(enabled);
+      });
+    }
+    if (typeof AccessibilityInfo.isDarkerSystemColorsEnabled === "function") {
+      AccessibilityInfo.isDarkerSystemColorsEnabled().then((enabled) => {
+        if (mounted) setIncreaseContrast(enabled);
+      });
+    }
 
     const reduceTransparencySub = AccessibilityInfo.addEventListener(
       "reduceTransparencyChanged",
