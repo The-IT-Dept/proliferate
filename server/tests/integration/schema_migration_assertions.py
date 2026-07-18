@@ -190,6 +190,7 @@ async def assert_current_schema(conn: AsyncConnection, head_revision: str) -> No
     )
     assert {"ck_cloud_sandbox_status", "ck_cloud_sandbox_type"} <= cloud_sandbox_checks.keys()
     assert "kubernetes" in cloud_sandbox_checks["ck_cloud_sandbox_type"]
+    assert "e2b" in cloud_sandbox_checks["ck_cloud_sandbox_type"]
 
     cloud_sandbox_indexes = await conn.run_sync(
         lambda sync_conn: {
