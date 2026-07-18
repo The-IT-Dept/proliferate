@@ -61,6 +61,7 @@ module.exports = ({ config }) => ({
     favicon: "./assets/favicon.png",
   },
   plugins: [
+    "expo-router",
     "expo-apple-authentication",
     "expo-localization",
     "expo-secure-store",
