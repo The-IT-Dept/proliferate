@@ -19,6 +19,7 @@ import {
   type PendingWorkspaceInitialSession,
 } from "#product/lib/domain/workspaces/creation/pending-entry";
 import { useCloudWorkspaceConnectionCache } from "#product/hooks/access/cloud/use-cloud-workspace-connection-cache";
+import { useCloudWorkspaceLifecycleCache } from "#product/hooks/access/cloud/use-cloud-workspace-lifecycle-cache";
 import { useInvalidateCloudBillingState } from "#product/hooks/access/cloud/use-cloud-billing";
 import { useWorkspaceSelection } from "#product/hooks/workspaces/workflows/selection/use-workspace-selection";
 import { useWorkspaceEntryFlow } from "#product/hooks/workspaces/workflows/use-workspace-entry-flow";
@@ -109,6 +110,7 @@ export function useCreateCloudWorkspace() {
   const { beginPendingWorkspace, failPendingEntry, finalizeSelection } = useWorkspaceEntryFlow();
   const invalidateCloudBillingState = useInvalidateCloudBillingState();
   const { clearCachedCloudWorkspaceConnections } = useCloudWorkspaceConnectionCache();
+  const { invalidateCloudWorkspaceLifecycle } = useCloudWorkspaceLifecycleCache();
   const { getWorkspaceCollections } = useWorkspaceCollectionsCache({
     runtimeUrl,
     cloudActive: true,
@@ -126,6 +128,11 @@ export function useCreateCloudWorkspace() {
     onSuccess: async (workspace) => {
       await clearCachedCloudWorkspaceConnections(workspace.id);
       upsertCloudWorkspace(workspace);
+      // The cloud workspace list is authoritative for the sidebar (see
+      // useWorkspaces' merge); refetch it so the newly created workspace is
+      // present instead of being dropped by a stale list — otherwise its
+      // provisioning polling never starts.
+      invalidateCloudWorkspaceLifecycle(workspace.id);
       await invalidateCloudBillingState();
     },
   });

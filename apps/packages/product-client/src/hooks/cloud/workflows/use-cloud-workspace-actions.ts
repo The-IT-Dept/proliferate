@@ -83,6 +83,9 @@ export function useCloudWorkspaceActions() {
       await clearCachedCloudWorkspaceConnections(cloudWorkspaceId);
     },
     onSuccess: async (_, workspaceId, context) => {
+      const cloudWorkspaceId = workspaceId.startsWith("cloud:")
+        ? workspaceId.slice("cloud:".length)
+        : workspaceId;
       const runtimeWorkspaceId = resolveCloudWorkspaceRuntimeId(workspaceId);
       clearViewedSessionErrors(context?.viewedSessionErrorIdsToClear ?? EMPTY_SESSION_IDS);
       clearWorkspaceRuntimeState(runtimeWorkspaceId, {
@@ -90,6 +93,10 @@ export function useCloudWorkspaceActions() {
         clearDraftUiKey: workspaceId,
       });
       clearDeferredLaunchesForWorkspace(runtimeWorkspaceId);
+      // The cloud workspace list is authoritative for the sidebar (see
+      // useWorkspaces' merge), so it must refetch without the deleted workspace
+      // or the row lingers until an unrelated refetch.
+      invalidateCloudWorkspaceLifecycle(cloudWorkspaceId);
       await invalidateCloudResources();
       telemetry.track("cloud_workspace_deleted", {
         workspace_kind: "cloud",
@@ -146,6 +153,7 @@ export function useCloudWorkspaceActions() {
     },
     onSuccess: async (workspace) => {
       upsertCloudWorkspace(workspace);
+      invalidateCloudWorkspaceLifecycle(workspace.id);
       await invalidateWorkspaceCollections();
     },
     onError: (error) => {
