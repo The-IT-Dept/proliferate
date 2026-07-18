@@ -1,178 +1,92 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { GlassSurface } from "@proliferate/design/glass";
 
 import { colors, radius, spacing } from "../../../styles/tokens";
 import { MobileIcon } from "../../primitives/MobileIcon";
 import { MobileTextInput } from "../../primitives/MobileTextInput";
 
+/**
+ * The Home composer (mockups.html frame A) — draft field plus a control
+ * dock (config summary + send). The card itself is opaque content (frame A
+ * renders it as `.card`, no blur); the control row is the one glass element
+ * here (design-system.md §3.2 "Composer dock" → `GlassSurface
+ * variant="dock"`), a true capsule housing the config link and the send
+ * button — the shape `dock` is built for (§6 "Capsule ... height / 2"),
+ * unlike the card's own variable, multi-line height. Repo/branch target
+ * selection lives one level up in MobileHomeScreen as the pill row above
+ * this card.
+ */
 export function MobileHomeComposer({
   draft,
-  keyboardInset,
-  repoLabel,
-  branchLabel,
-  branchDisabled,
   configLabel,
   configPending,
   canSubmit,
   onDraftChange,
-  onOpenRepo,
-  onOpenBranch,
   onOpenConfig,
   onSubmit,
 }: {
   draft: string;
-  keyboardInset: number;
-  repoLabel: string;
-  branchLabel: string;
-  branchDisabled: boolean;
   configLabel: string;
   configPending: boolean;
   canSubmit: boolean;
   onDraftChange: (value: string) => void;
-  onOpenRepo: () => void;
-  onOpenBranch: () => void;
   onOpenConfig: () => void;
   onSubmit: () => void;
 }) {
   return (
-    <View style={[styles.composer, keyboardInset > 0 && { marginBottom: keyboardInset }]}>
-      <View style={styles.composerCluster}>
-        <View style={styles.selectorRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Choose repository"
-            onPress={onOpenRepo}
-            style={({ pressed }) => [styles.repoPill, styles.repoPillWide, pressed && styles.pressed]}
-          >
-            <MobileIcon name="git-branch" size={15} color={colors.fg} />
-            <Text style={styles.repoPillText} numberOfLines={1}>
-              {repoLabel}
-            </Text>
-            <MobileIcon name="chevron-right" size={14} color={colors.faint} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Choose branch"
-            disabled={branchDisabled}
-            onPress={onOpenBranch}
-            style={({ pressed }) => [
-              styles.repoPill,
-              styles.branchPill,
-              branchDisabled && styles.disabledPill,
-              pressed && styles.pressed,
-            ]}
-          >
-            <MobileIcon name="git-branch" size={15} color={colors.fg} />
-            <Text style={styles.repoPillText} numberOfLines={1}>
-              {branchLabel}
-            </Text>
-            <MobileIcon name="chevron-right" size={14} color={colors.faint} />
-          </Pressable>
-        </View>
-
-        <View style={styles.composerCard}>
-          <MobileTextInput
-            autoFocus
-            multiline
-            value={draft}
-            onChangeText={onDraftChange}
-            placeholder="Describe a task"
-            style={styles.composerInput}
-          />
-          <View style={styles.composerFooter}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open chat settings"
-              onPress={onOpenConfig}
-              style={({ pressed }) => [
-                styles.configLink,
-                configPending && styles.configLinkPending,
-                pressed && styles.configLinkPressed,
-              ]}
-            >
-              <Text style={styles.configLinkText} numberOfLines={1}>
-                {configLabel}
-              </Text>
-              <MobileIcon name="chevron-down" size={10} color={colors.faint} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send"
-              accessibilityState={{ disabled: !canSubmit }}
-              disabled={!canSubmit}
-              onPress={onSubmit}
-              style={({ pressed }) => [
-                styles.send,
-                !canSubmit && styles.sendDisabled,
-                pressed && styles.sendPressed,
-              ]}
-            >
-              <MobileIcon name="send" size={18} color={canSubmit ? colors.background : colors.faint} />
-            </Pressable>
-          </View>
-        </View>
-      </View>
+    <View style={styles.composerCard}>
+      <MobileTextInput
+        multiline
+        value={draft}
+        onChangeText={onDraftChange}
+        placeholder="Describe a task, @mention files, run /commands"
+        style={styles.composerInput}
+      />
+      <GlassSurface variant="dock" style={styles.composerDock}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open chat settings"
+          onPress={onOpenConfig}
+          style={({ pressed }) => [
+            styles.configLink,
+            configPending && styles.configLinkPending,
+            pressed && styles.configLinkPressed,
+          ]}
+        >
+          <Text style={styles.configLinkText} numberOfLines={1}>
+            {configLabel}
+          </Text>
+          <MobileIcon name="chevron-down" size={10} color={colors.faint} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Send"
+          accessibilityState={{ disabled: !canSubmit }}
+          disabled={!canSubmit}
+          onPress={onSubmit}
+          style={({ pressed }) => [
+            styles.send,
+            !canSubmit && styles.sendDisabled,
+            pressed && styles.sendPressed,
+          ]}
+        >
+          <MobileIcon name="send" size={18} color={canSubmit ? colors.background : colors.faint} />
+        </Pressable>
+      </GlassSurface>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  composer: {
-    paddingHorizontal: spacing[3],
-    paddingTop: spacing[2],
-    paddingBottom: spacing[3],
-    backgroundColor: colors.background,
-  },
-  composerCluster: {
-    gap: spacing[3],
-  },
-  selectorRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-    paddingHorizontal: spacing[1],
-  },
-  repoPill: {
-    minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[1],
-    borderRadius: radius.full,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing[2],
-    overflow: "hidden",
-  },
-  repoPillWide: {
-    flexShrink: 1,
-    minWidth: 0,
-    maxWidth: "68%",
-  },
-  branchPill: {
-    minWidth: 92,
-    maxWidth: "36%",
-    flexShrink: 1,
-  },
-  disabledPill: {
-    opacity: 0.55,
-  },
-  repoPillText: {
-    flexShrink: 1,
-    minWidth: 0,
-    color: colors.fg,
-    fontSize: 13,
-    fontWeight: "600",
-  },
   composerCard: {
-    borderRadius: 28,
+    borderRadius: 26,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.card,
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[3],
+    paddingTop: spacing[4],
     paddingBottom: spacing[3],
-    gap: spacing[2],
+    gap: spacing[3],
   },
   composerInput: {
     minHeight: 23,
@@ -186,12 +100,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 23,
   },
-  composerFooter: {
-    minHeight: 40,
+  composerDock: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing[2],
+    paddingHorizontal: spacing[2],
   },
   configLink: {
     flexShrink: 1,
@@ -202,11 +117,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     borderRadius: radius.md,
-    paddingHorizontal: 2,
+    paddingHorizontal: spacing[2],
   },
   configLinkPending: {
     backgroundColor: colors.accent,
-    paddingHorizontal: spacing[2],
   },
   configLinkPressed: {
     opacity: 0.82,
@@ -221,8 +135,8 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   send: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.full,
@@ -233,8 +147,5 @@ const styles = StyleSheet.create({
   },
   sendPressed: {
     opacity: 0.85,
-  },
-  pressed: {
-    opacity: 0.7,
   },
 });

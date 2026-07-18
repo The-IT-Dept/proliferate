@@ -3,6 +3,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -13,10 +14,12 @@ import { useMobileHomeLaunchActions } from "../../hooks/home/workflows/use-mobil
 import { useMobileCloudRepoReadiness } from "../../hooks/access/cloud/repositories/use-mobile-cloud-repo-readiness";
 import { useVisualViewportKeyboardInset } from "../../hooks/ui/keyboard/use-visual-viewport-keyboard-inset";
 import { useMobileWorkInventory } from "../../hooks/work/derived/use-mobile-work-inventory";
+import { formatMobileHomeDateEyebrow } from "../../lib/domain/home/mobile-home-date";
+import { deriveMobileHomeLaunchEnablement } from "../../lib/domain/home/mobile-home-launch-enablement";
 import { summarizeMobileHomeLaunchConfig } from "../../lib/domain/home/mobile-home-config-summary";
 import type { MobileCloudChat } from "../../navigation/navigation-model";
 import { MobileIcon } from "../primitives/MobileIcon";
-import { colors, radius, spacing } from "../../styles/tokens";
+import { colors, spacing } from "../../styles/tokens";
 import { MobileBranchPickerSheet } from "./MobileBranchPickerSheet";
 import { MobileHomeComposer } from "./screen/MobileHomeComposer";
 import { MobileHomeConfigSheet } from "./screen/MobileHomeConfigSheet";
@@ -31,6 +34,9 @@ interface MobileHomeScreenProps {
 
 type HomeSheet = "repo" | "branch" | "config" | null;
 
+const RECENT_LIMIT = 3;
+const SCROLL_CONTENT_BOTTOM_PADDING = 140;
+
 export function MobileHomeScreen({
   ownerUserId,
   onOpenChat,
@@ -41,7 +47,7 @@ export function MobileHomeScreen({
   const [sheet, setSheet] = useState<HomeSheet>(null);
   const launchModel = useMobileHomeLaunchModel();
   const recentInventory = useMobileWorkInventory();
-  const recentItems = recentInventory.recentItems.slice(0, 2);
+  const recentItems = recentInventory.recentItems.slice(0, RECENT_LIMIT);
   // Gate workspace creation on the same managed-Cloud / GitHub App readiness
   // the Add Repository modal uses, resolved for the selected repo.
   const cloudRepoReadiness = useMobileCloudRepoReadiness({
@@ -78,13 +84,22 @@ export function MobileHomeScreen({
     launchModel.launchComposerControls,
     launchModel.selectedRuntime?.label ?? "Runtime",
   );
-  const canStartCloudHarness = launchModel.launchableAgentKinds.length > 0;
-  const canSubmit = Boolean(draft.trim())
-    && Boolean(launchModel.selectedRepo)
-    && Boolean(launchModel.selectedRuntime)
-    && canStartCloudHarness
-    && !readinessBlockedReason
-    && !launchActions.submitting;
+  // Mirrors the web home composer's launch-enablement derivation (repo
+  // selected + base branch resolved → can create), extended with the
+  // readiness/harness gates this screen already enforces elsewhere.
+  const launchEnablement = deriveMobileHomeLaunchEnablement({
+    draft,
+    hasSelectedRepo: Boolean(launchModel.selectedRepo),
+    branchesLoading: launchModel.repoBranches.isLoading,
+    branchesError: launchModel.repoBranches.isError,
+    branchOptionsCount: launchModel.branchOptions.length,
+    selectedBaseBranch: launchModel.selectedBaseBranch,
+    readinessBlockedReason,
+    harnessUnavailableReason: launchModel.harnessAvailability.message,
+    submitting: launchActions.submitting,
+  });
+  const dateEyebrow = formatMobileHomeDateEyebrow(new Date());
+  const heroRepoName = launchModel.selectedRepo?.gitRepoName ?? null;
 
   function closeSheet() {
     setSheet(null);
@@ -96,45 +111,81 @@ export function MobileHomeScreen({
       behavior={Platform.select({ ios: "padding", default: undefined })}
       keyboardVerticalOffset={0}
     >
-      <View style={styles.header}>
-        <View style={styles.headerButton} />
-        <Text style={styles.headerTitle}>New chat</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open chat settings"
-          onPress={() => setSheet("config")}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-        >
-          <MobileIcon name="controls" size={19} color={colors.fg} />
-        </Pressable>
-      </View>
-
-      <MobileHomeRecentSection items={recentItems} onOpenChat={onOpenChat} />
-
-      <View style={styles.spacer} />
-
-      {launchActions.status || launchActions.error || readinessBlockedReason || (!canStartCloudHarness && launchModel.harnessAvailability.message) ? (
-        <Text style={[styles.launchNote, launchActions.error && styles.launchError]}>
-          {launchActions.error ?? launchActions.status ?? readinessBlockedReason ?? launchModel.harnessAvailability.message}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardInset > 0 && { paddingBottom: SCROLL_CONTENT_BOTTOM_PADDING + keyboardInset },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.dateEyebrow}>{dateEyebrow}</Text>
+        <Text style={styles.heroTitle}>
+          {"What should we\nbuild"}
+          {heroRepoName ? (
+            <>
+              {" in "}
+              <Text style={styles.heroRepo}>{heroRepoName}</Text>
+            </>
+          ) : null}
+          {"?"}
         </Text>
-      ) : null}
-      <MobileHomeComposer
-        draft={draft}
-        keyboardInset={keyboardInset}
-        repoLabel={launchModel.selectedRepo?.label ?? "Choose a GitHub repo"}
-        branchLabel={launchModel.selectedBaseBranch ?? (launchModel.repoBranches.isLoading ? "Loading" : "Branch")}
-        branchDisabled={!launchModel.selectedRepo}
-        configLabel={launchConfigSummary.label}
-        configPending={launchConfigSummary.pending}
-        canSubmit={canSubmit}
-        onDraftChange={setDraft}
-        onOpenRepo={() => setSheet("repo")}
-        onOpenBranch={() => setSheet("branch")}
-        onOpenConfig={() => setSheet("config")}
-        onSubmit={() => {
-          void launchActions.submit(draft);
-        }}
-      />
+
+        <View style={styles.pillRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Choose repository"
+            onPress={() => setSheet("repo")}
+            style={({ pressed }) => [styles.repoPill, styles.repoPillWide, pressed && styles.pressed]}
+          >
+            <MobileIcon name="folder" size={15} color={colors.mutedForeground} />
+            <Text style={styles.repoPillText} numberOfLines={1}>
+              {launchModel.selectedRepo?.label ?? "Choose a GitHub repo"}
+            </Text>
+            <MobileIcon name="chevron-down" size={11} color={colors.faint} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Choose branch"
+            disabled={!launchModel.selectedRepo}
+            onPress={() => setSheet("branch")}
+            style={({ pressed }) => [
+              styles.repoPill,
+              styles.branchPill,
+              !launchModel.selectedRepo && styles.disabledPill,
+              pressed && styles.pressed,
+            ]}
+          >
+            <MobileIcon name="git-branch" size={15} color={colors.mutedForeground} />
+            <Text style={styles.repoPillText} numberOfLines={1}>
+              {launchModel.selectedBaseBranch
+                ?? (launchModel.repoBranches.isLoading ? "Loading" : "Branch")}
+            </Text>
+            <MobileIcon name="chevron-down" size={11} color={colors.faint} />
+          </Pressable>
+        </View>
+
+        <MobileHomeComposer
+          draft={draft}
+          configLabel={launchConfigSummary.label}
+          configPending={launchConfigSummary.pending}
+          canSubmit={launchEnablement.canSubmit}
+          onDraftChange={setDraft}
+          onOpenConfig={() => setSheet("config")}
+          onSubmit={() => {
+            void launchActions.submit(draft);
+          }}
+        />
+
+        {launchActions.status || launchActions.error || launchEnablement.disabledReason ? (
+          <Text style={[styles.launchNote, launchActions.error && styles.launchError]}>
+            {launchActions.error ?? launchActions.status ?? launchEnablement.disabledReason}
+          </Text>
+        ) : null}
+
+        <MobileHomeRecentSection items={recentItems} onOpenChat={onOpenChat} />
+      </ScrollView>
 
       <MobileHomeRepoPopover
         visible={sheet === "repo"}
@@ -173,34 +224,79 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    minHeight: Platform.OS === "web" ? 48 : 58,
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing[5],
+    paddingTop: spacing[8],
+    paddingBottom: SCROLL_CONTENT_BOTTOM_PADDING,
+    gap: spacing[3],
+  },
+  dateEyebrow: {
+    color: colors.info,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  heroTitle: {
+    color: colors.fg,
+    fontSize: 30,
+    fontWeight: "700",
+    lineHeight: 35,
+    letterSpacing: -0.3,
+    marginTop: spacing[1],
+  },
+  heroRepo: {
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    fontSize: 25,
+    fontWeight: "600",
+  },
+  pillRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[3],
+    gap: spacing[2],
+    marginTop: spacing[3],
   },
-  headerButton: {
-    width: 38,
-    height: 38,
+  repoPill: {
+    minHeight: 36,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.full,
+    gap: spacing[1],
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing[3],
+    overflow: "hidden",
   },
-  headerTitle: {
+  repoPillWide: {
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: "62%",
+  },
+  branchPill: {
+    minWidth: 92,
+    maxWidth: "36%",
+    flexShrink: 1,
+  },
+  disabledPill: {
+    opacity: 0.55,
+  },
+  repoPillText: {
+    flexShrink: 1,
+    minWidth: 0,
     color: colors.fg,
-    fontSize: 15.5,
-    fontWeight: "700",
-  },
-  spacer: {
-    flex: 1,
+    fontSize: 12,
+    fontWeight: "500",
   },
   launchNote: {
     minHeight: 18,
     color: colors.faint,
     fontSize: 12.5,
     lineHeight: 18,
-    marginTop: spacing[2],
+    marginTop: spacing[1],
     textAlign: "center",
   },
   launchError: {
