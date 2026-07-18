@@ -38,6 +38,13 @@ export function resolveMobileShellStage(input: MobileShellStageInput): MobileShe
   if (input.authState === "needs_github") {
     return "needs_github";
   }
+  if (input.onboardingStatus === "checking") {
+    // The onboarding flag read from AsyncStorage hasn't resolved yet. Hold
+    // the splash rather than assuming "needs onboarding" — otherwise an
+    // already-onboarded user sees a visible onboarding flash on every cold
+    // start, before the read resolves to "done".
+    return "bootstrapping";
+  }
   if (input.onboardingStatus !== "done") {
     return "onboarding";
   }

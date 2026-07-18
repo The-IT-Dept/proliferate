@@ -63,14 +63,14 @@ describe("resolveMobileShellStage", () => {
     ).toBe("chat");
   });
 
-  it("still onboards even while the onboarding check is in flight, treating 'checking' as not done", () => {
+  it("holds the bootstrapping splash while the onboarding check is in flight, instead of flashing onboarding", () => {
     expect(
       resolveMobileShellStage({
         authState: "active",
         onboardingStatus: "checking",
         hasSelectedChat: true,
       }),
-    ).toBe("onboarding");
+    ).toBe("bootstrapping");
   });
 
   it("prioritizes auth stages over a stale selected chat", () => {
