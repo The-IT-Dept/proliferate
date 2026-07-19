@@ -31,9 +31,11 @@ interface MobileSettingsScreenProps {
 }
 
 export function MobileSettingsScreen({ account, onSignOut }: MobileSettingsScreenProps) {
-  // The native tab bar computes its own content insets for the first
-  // scroll view in a tab screen (app/(tabs)/_layout.tsx), so this no
-  // longer needs to reserve a floating bar's footprint by hand.
+  // MobileScreen's ScrollView carries the native content inset
+  // (contentInsetAdjustmentBehavior="automatic"), which applies both the
+  // large-title top inset (so the profile block no longer renders up in the
+  // title band under the status bar) and the tab-bar bottom footprint. This is
+  // just baseline bottom breathing room.
   const scrollContentBottomPadding = spacing[6];
   const settingsModel = useMobileSettingsModel(account);
   const billingWorkflow = useMobileBillingActions();
@@ -46,6 +48,10 @@ export function MobileSettingsScreen({ account, onSignOut }: MobileSettingsScree
 
   return (
     <MobileScreen contentStyle={[styles.screenContent, { paddingBottom: scrollContentBottomPadding }]}>
+      {/* Native headers have no subtitle slot, so this caption (moved out of
+          the route) reads as body content below the "Settings" large title,
+          as the scroll view's first child. */}
+      <Text style={styles.subtitle}>Account · device</Text>
       <View style={styles.profile}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initialsForMobileSettingsName(settingsModel.displayName)}</Text>
@@ -203,8 +209,12 @@ const styles = StyleSheet.create({
   screenContent: {
     paddingHorizontal: spacing[4],
     paddingTop: spacing[4],
-    // paddingBottom is set inline (scrollContentBottomPadding) so it can
-    // reserve the floating tab bar's footprint — see that computation above.
+    // paddingBottom is set inline (scrollContentBottomPadding).
+  },
+  subtitle: {
+    color: colors.faint,
+    fontSize: 12,
+    paddingBottom: spacing[1],
   },
   profile: {
     alignItems: "center",
