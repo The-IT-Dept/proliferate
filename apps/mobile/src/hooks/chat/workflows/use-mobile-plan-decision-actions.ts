@@ -1,21 +1,15 @@
-import { useCallback, useState } from "react";
-import { AnyHarnessError } from "@anyharness/sdk";
+import { useCallback, useRef, useState } from "react";
 import { useApprovePlanMutation, useRejectPlanMutation } from "@anyharness/sdk-react";
 import type { CloudWorkspaceDetail } from "@proliferate/cloud-sdk";
 
-import { buildPlanDecisionRequest } from "../../../lib/domain/chat/mobile-plan-decision-resolve";
+import {
+  runPlanDecision,
+  type PlanDecisionActionKind,
+  type PlanDecisionInFlightTracker,
+  type PlanDecisionState,
+} from "../../../lib/domain/chat/mobile-plan-decision-runner";
 import { resolveMobileInteractionBlockReason } from "../../../lib/access/anyharness/cloud-sandbox-runtime";
 import { useMobileToast } from "../../../providers/MobileToastProvider";
-
-/** Fix 3 (reviewer finding) — web's `showToast("Plan decision was updated.
- * Refreshed plan state.")` on a `PLAN_DECISION_VERSION_CONFLICT`/
- * `PLAN_DECISION_TERMINAL` 409 (`use-proposed-plan-actions.ts`'s
- * `runPlanDecisionMutation`), verbatim. Web additionally refetches the plan
- * into a query cache mobile doesn't have; here the live transcript stream
- * is the only source of truth, so this is just the toast text, no
- * refetch — the raw server `error.message` for that 409 is internal
- * wording never meant for end users. */
-const PLAN_DECISION_CONFLICT_MESSAGE = "Plan decision was updated. Refreshed plan state.";
 
 /**
  * Row 20 — Approve/Reject a proposed plan (`ProposedPlanRow` in
@@ -44,10 +38,11 @@ const PLAN_DECISION_CONFLICT_MESSAGE = "Plan decision was updated. Refreshed pla
  * `use-proposed-plan-actions.ts`). Mobile has no such cache to reconcile —
  * `stream.transcript` is the only source of truth here — so a conflict
  * just surfaces as a toast (the friendly verbatim copy web shows after its
- * refetch — `PLAN_DECISION_CONFLICT_MESSAGE` below, Fix 3 — not the raw
- * server `error.message`); the next transcript event naturally carries the
- * real, current decision state and the row updates (buttons re-derive from
- * fresh `decisionVersion`/`decisionState`) without any special-cased retry.
+ * refetch, not the raw server `error.message` — Fix 3, see
+ * `mobile-plan-decision-runner.ts`'s `resolvePlanDecisionErrorMessage`);
+ * the next transcript event naturally carries the real, current decision
+ * state and the row updates (buttons re-derive from fresh
+ * `decisionVersion`/`decisionState`) without any special-cased retry.
  *
  * "Run here"/"New session" (carrying out an approved plan) are NOT built
  * here — flagged as follow-up. Web's `implementPlanHere` submits a canned
@@ -70,6 +65,19 @@ const PLAN_DECISION_CONFLICT_MESSAGE = "Plan decision was updated. Refreshed pla
  * so the caller can drive each button from its own action while `deciding`
  * (either action, unchanged) still drives the shared double-tap-guard
  * `disabled` on both buttons.
+ *
+ * Fix 4 (reviewer finding, "test the actions hook"): the decide-and-report
+ * logic (mutate-call shape, the friendly 409 toast, and the double-tap
+ * guard) now lives in `mobile-plan-decision-runner.ts`'s `runPlanDecision`
+ * — this hook is just the React wiring around it (real mutations, toast,
+ * and the `deciding` state this file's `.test.ts` can't reach directly,
+ * since there's no RN/DOM render harness in this app; see that module's
+ * doc comment for why). Pulling that logic out also hardened the
+ * double-tap guard: it used to be enforced only by the UI disabling the
+ * button after a re-render, so two taps in the same synchronous tick could
+ * both reach `mutate`. `trackerRef` below is a plain ref (not the
+ * `deciding` state, which is async/batched) so the guard reads/writes
+ * synchronously across both taps.
  */
 export function useMobilePlanDecisionActions({
   workspace,
@@ -81,33 +89,28 @@ export function useMobilePlanDecisionActions({
   const approveMutation = useApprovePlanMutation();
   const rejectMutation = useRejectPlanMutation();
   const toast = useMobileToast();
-  const [deciding, setDeciding] = useState<{ planId: string; action: "approve" | "reject" } | null>(null);
+  const [deciding, setDeciding] = useState<PlanDecisionState | null>(null);
+  const trackerRef = useRef<PlanDecisionInFlightTracker>({ planId: null });
 
   const decide = useCallback(
-    async (
-      action: "approve" | "reject",
+    (
+      action: PlanDecisionActionKind,
       mutate: (input: { planId: string; expectedDecisionVersion: number }) => Promise<unknown>,
       planId: string,
       decisionVersion: number,
       failureMessage: string,
-    ) => {
-      const blockReason = resolveMobileInteractionBlockReason({ workspace, isUnclaimed });
-      if (blockReason) {
-        toast.show({ tone: "error", message: blockReason });
-        return;
-      }
-      setDeciding({ planId, action });
-      try {
-        await mutate({ planId, ...buildPlanDecisionRequest(decisionVersion) });
-      } catch (error) {
-        toast.show({
-          tone: "error",
-          message: resolvePlanDecisionErrorMessage(error, failureMessage),
-        });
-      } finally {
-        setDeciding((current) => (current?.planId === planId ? null : current));
-      }
-    },
+    ) =>
+      runPlanDecision({
+        action,
+        planId,
+        decisionVersion,
+        mutate,
+        failureMessage,
+        blockReason: resolveMobileInteractionBlockReason({ workspace, isUnclaimed }),
+        tracker: trackerRef.current,
+        onStateChange: setDeciding,
+        showToast: (message) => toast.show({ tone: "error", message }),
+      }),
     [toast, workspace, isUnclaimed],
   );
 
@@ -132,26 +135,3 @@ export function useMobilePlanDecisionActions({
 }
 
 export type MobilePlanDecisionActions = ReturnType<typeof useMobilePlanDecisionActions>;
-
-/** Fix 3 (reviewer finding) — detected the same way web's
- * `isPlanDecisionRefreshConflict` does (`use-proposed-plan-actions.ts`): an
- * `AnyHarnessError` (`@anyharness/sdk`, the error `useApprovePlanMutation`/
- * `useRejectPlanMutation` actually reject with) whose RFC 7807
- * `problem.status` is 409 and `problem.code` is
- * `PLAN_DECISION_VERSION_CONFLICT` or `PLAN_DECISION_TERMINAL`. Every other
- * error keeps surfacing `error.message` (or the generic `fallback` for a
- * non-`Error` throw), unchanged from before this fix. */
-function resolvePlanDecisionErrorMessage(error: unknown, fallback: string): string {
-  if (isPlanDecisionConflict(error)) {
-    return PLAN_DECISION_CONFLICT_MESSAGE;
-  }
-  return error instanceof Error ? error.message : fallback;
-}
-
-function isPlanDecisionConflict(error: unknown): boolean {
-  return (
-    error instanceof AnyHarnessError
-    && error.problem.status === 409
-    && (error.problem.code === "PLAN_DECISION_VERSION_CONFLICT" || error.problem.code === "PLAN_DECISION_TERMINAL")
-  );
-}

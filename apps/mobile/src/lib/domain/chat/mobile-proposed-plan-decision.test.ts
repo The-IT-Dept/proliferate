@@ -130,6 +130,17 @@ describe("resolveProposedPlanDecisionActions", () => {
       }),
     ).toEqual({ canApprove: false, canReject: false });
   });
+
+  it("hides both actions once superseded (Fix 4, reviewer finding: missing case)", () => {
+    expect(
+      resolveProposedPlanDecisionActions({
+        decisionState: "superseded",
+        decisionVersion: 4,
+        nativeResolutionState: null,
+        nativeContinuation: false,
+      }),
+    ).toEqual({ canApprove: false, canReject: false });
+  });
 });
 
 describe("resolveProposedPlanFailureMessage", () => {
