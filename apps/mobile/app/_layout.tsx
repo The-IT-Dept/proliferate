@@ -15,6 +15,7 @@ import { useMobileScreenTelemetry } from "../src/hooks/telemetry/lifecycle/use-m
 import { MobileAuthProvider, useMobileAuth } from "../src/providers/MobileAuthProvider";
 import { MobileCloudProvider } from "../src/providers/MobileCloudProvider";
 import { MobileTelemetryProvider } from "../src/providers/MobileTelemetryProvider";
+import { MobileToastProvider } from "../src/providers/MobileToastProvider";
 import { MobileWorkspaceRuntimeProvider } from "../src/providers/MobileWorkspaceRuntimeProvider";
 import { colors, mobileNavigationTheme, spacing } from "../src/styles/tokens";
 
@@ -36,13 +37,18 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.fill}>
       <SafeAreaProvider>
         <KeyboardProvider>
-          <MobileAuthProvider>
-            <MobileTelemetryProvider>
-              <MobileCloudProvider>
-                <RootNavigationGate />
-              </MobileCloudProvider>
-            </MobileTelemetryProvider>
-          </MobileAuthProvider>
+          {/* Mounted once, above the auth/nav gate, so useMobileToast() is
+              available app-wide (Group C's Workspaces list today; later
+              groups reuse it the same way) regardless of auth stage. */}
+          <MobileToastProvider>
+            <MobileAuthProvider>
+              <MobileTelemetryProvider>
+                <MobileCloudProvider>
+                  <RootNavigationGate />
+                </MobileCloudProvider>
+              </MobileTelemetryProvider>
+            </MobileAuthProvider>
+          </MobileToastProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
