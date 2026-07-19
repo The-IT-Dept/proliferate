@@ -34,7 +34,7 @@ export default function HomeTabRoute() {
         ownerUserId={ownerUserId}
         onOpenChat={openChat}
         onConfigureRepos={() => router.navigate("/settings")}
-        onOpenAgents={() => router.navigate("/settings")}
+        onOpenAgents={() => router.navigate("/settings/agents")}
       />
     </SafeAreaView>
   );

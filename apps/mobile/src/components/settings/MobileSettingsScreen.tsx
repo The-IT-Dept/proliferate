@@ -28,9 +28,13 @@ import { colors, spacing } from "../../styles/tokens";
 interface MobileSettingsScreenProps {
   account: MobileSettingsAccountSummary;
   onSignOut: () => void;
+  /** Pushes the Group H harness/agent-auth list (`/settings/agents`) — the
+   * same destination the Home composer's "Agents" affordance opens
+   * (`mobile-home-launch-enablement.ts`'s model-availability notice). */
+  onOpenAgents: () => void;
 }
 
-export function MobileSettingsScreen({ account, onSignOut }: MobileSettingsScreenProps) {
+export function MobileSettingsScreen({ account, onSignOut, onOpenAgents }: MobileSettingsScreenProps) {
   // MobileScreen's ScrollView carries the native content inset
   // (contentInsetAdjustmentBehavior="automatic"), which applies both the
   // large-title top inset (so the profile block no longer renders up in the
@@ -65,6 +69,13 @@ export function MobileSettingsScreen({ account, onSignOut }: MobileSettingsScree
       </View>
 
       <MobileSettingsSection label={sectionLabels.account}>
+        <MobileSettingsRow
+          icon="terminal"
+          title="Agents"
+          subtitle="Sign in and manage models"
+          onPress={onOpenAgents}
+          chevron
+        />
         <MobileSettingsRow
           icon="github"
           title="GitHub"

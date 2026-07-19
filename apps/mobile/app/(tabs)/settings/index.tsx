@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { MobileSettingsScreen } from "../../../src/components/settings/MobileSettingsScreen";
@@ -9,6 +9,7 @@ import { useMobileAuth } from "../../../src/providers/MobileAuthProvider";
 import { colors } from "../../../src/styles/tokens";
 
 export default function SettingsTabRoute() {
+  const router = useRouter();
   const { user, signOut } = useMobileAuth();
   const account = useMemo(() => buildMobileAccountSummary(user), [user]);
   // Handles the GitHub App callback redirect from app/+native-intent.ts
@@ -27,7 +28,11 @@ export default function SettingsTabRoute() {
           title — inside MobileScreen's inset-aware scroll view, not as a bare
           sibling here (which rendered it under the large title). */}
       <Stack.Screen options={{ title: "Settings" }} />
-      <MobileSettingsScreen account={account} onSignOut={() => void signOut()} />
+      <MobileSettingsScreen
+        account={account}
+        onSignOut={() => void signOut()}
+        onOpenAgents={() => router.push("/settings/agents")}
+      />
     </SafeAreaView>
   );
 }
