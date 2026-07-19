@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as Clipboard from "expo-clipboard";
 import {
   RefreshControl,
   ScrollView,
@@ -7,15 +8,18 @@ import {
   View,
 } from "react-native";
 
-import { useMobileWorkInventory } from "../../hooks/work/derived/use-mobile-work-inventory";
+import { useMobileWorkInventory, type MobileWorkItem } from "../../hooks/work/derived/use-mobile-work-inventory";
 import { useMobileWorkFilters } from "../../hooks/work/ui/use-mobile-work-filters";
 import { useMobileWorkClaimActions } from "../../hooks/work/workflows/use-mobile-work-claim-actions";
+import { useMobileWorkspaceManagementActions } from "../../hooks/work/workflows/use-mobile-workspace-management-actions";
 import { useMobileServerCapabilities } from "../../hooks/access/cloud/capabilities/use-mobile-server-capabilities";
 import {
   MOBILE_WORK_STATUS_OPTIONS,
   MOBILE_WORK_TYPE_OPTIONS,
 } from "../../lib/domain/work/mobile-work-filters";
+import { mobileIconForRuntimeLocation } from "../../lib/domain/work/mobile-work-presentation";
 import type { MobileCloudChat } from "../../lib/domain/workspace/mobile-workspace-chat";
+import { MobileWorkspaceActionSheet } from "../chat/MobileWorkspaceActionSheet";
 import { MobileIcon } from "../primitives/MobileIcon";
 import {
   MobileEmptyState,
@@ -41,10 +45,12 @@ export function MobileWorkspacesScreen({
   // tab-bar bottom footprint. This is just baseline bottom breathing room.
   const scrollContentBottomPadding = spacing[8];
   const [filterOpen, setFilterOpen] = useState(false);
+  const [managedItem, setManagedItem] = useState<MobileWorkItem | null>(null);
   const allInventory = useMobileWorkInventory();
   const filterState = useMobileWorkFilters(allInventory.items);
   const inventory = useMobileWorkInventory(filterState.filters);
   const claimActions = useMobileWorkClaimActions();
+  const managementActions = useMobileWorkspaceManagementActions();
   // Access-loss (PR 7): when managed-Cloud capability is no longer ready, keep
   // existing Cloud workspace records visible but locked and explained. Only
   // treat an explicit non-ready capability as loss — an in-flight/unknown read
@@ -148,6 +154,7 @@ export function MobileWorkspacesScreen({
                     claiming={claimActions.claimingWorkspaceId === item.workspace.id}
                     accessLossReason={accessLossReason}
                     onPress={() => onOpenChat(item.chat)}
+                    onLongPress={() => setManagedItem(item)}
                     onClaim={() => {
                       void claimActions.claimListWorkspace(item);
                     }}
@@ -183,6 +190,62 @@ export function MobileWorkspacesScreen({
         onClear={filterState.clearFilters}
         onClose={() => setFilterOpen(false)}
       />
+
+      {managedItem ? (
+        <MobileWorkspaceActionSheet
+          visible={Boolean(managedItem)}
+          branchLabel={managedItem.view.branchLabel}
+          runtimeLabel={managedItem.view.runtimeLocationLabel}
+          runtimeDetail={managedItem.view.runtimeLabel}
+          runtimeIcon={mobileIconForRuntimeLocation(managedItem.view.runtimeLocation)}
+          unclaimed={managedItem.view.unclaimed}
+          claimPending={claimActions.claimingWorkspaceId === managedItem.workspace.id}
+          promptSubmitting={false}
+          sessions={[]}
+          activeSessionId={null}
+          newSessionMode={false}
+          composerControls={[]}
+          showSessionManagement={false}
+          management={{
+            displayName: managedItem.view.title,
+            archived: managedItem.view.status === "archived",
+            renaming: managementActions.isRenamingWorkspace,
+            archiving: managementActions.isArchivingWorkspace,
+            restoring: managementActions.isRestoringWorkspace,
+            deleting: managementActions.isDeletingWorkspace,
+            onOpen: () => onOpenChat(managedItem.chat),
+            onRename: (nextName) => {
+              void managementActions
+                .renameWorkspace(managedItem.workspace.id, nextName)
+                .catch((error) => {
+                  console.warn("Failed to rename workspace", error);
+                });
+            },
+            onArchive: () => {
+              void managementActions.archiveWorkspace(managedItem.workspace.id).catch((error) => {
+                console.warn("Failed to archive workspace", error);
+              });
+            },
+            onRestore: () => {
+              void managementActions.restoreWorkspace(managedItem.workspace.id).catch((error) => {
+                console.warn("Failed to restore workspace", error);
+              });
+            },
+            onDelete: () => {
+              void managementActions.deleteWorkspace(managedItem.workspace.id).catch((error) => {
+                console.warn("Failed to delete workspace", error);
+              });
+            },
+          }}
+          onClaim={() => claimActions.claimListWorkspace(managedItem).then(() => true).catch(() => false)}
+          onNewSession={() => {}}
+          onSelectSession={() => {}}
+          onCopyBranch={() => {
+            void Clipboard.setStringAsync(managedItem.view.branchLabel);
+          }}
+          onClose={() => setManagedItem(null)}
+        />
+      ) : null}
     </MobileScreen>
   );
 }

@@ -4,7 +4,10 @@ import {
   mobileColorKeyForWorkStatusTone,
   mobileIconForRuntimeLocation,
   mobileIconForWorkSourceKind,
+  type MobileWorkStatusColorKey,
 } from "../../lib/domain/work/mobile-work-presentation";
+import { mobileWorkItemNeedsAttention } from "../../lib/domain/work/mobile-work-attention";
+import { mobileWorkspaceStatusPill } from "../../lib/domain/work/mobile-work-status-pill";
 import type { MobileWorkItem } from "../../hooks/work/derived/use-mobile-work-inventory";
 import { MobileIcon } from "../primitives/MobileIcon";
 import { colors, radius, spacing } from "../../styles/tokens";
@@ -20,8 +23,19 @@ interface MobileWorkspaceCardProps {
    */
   accessLossReason?: string | null;
   onPress: () => void;
+  /** Opens the workspace-management sheet (rename/archive/restore/delete) —
+   * IA §2.2: "long-press -> context menu". */
+  onLongPress?: () => void;
   onClaim?: () => void;
 }
+
+const STATUS_PILL_COLORS: Record<MobileWorkStatusColorKey, { bg: string; fg: string }> = {
+  warning: { bg: colors.warningSubtle, fg: colors.warning },
+  info: { bg: colors.infoSubtle, fg: colors.info },
+  success: { bg: colors.successSubtle, fg: colors.success },
+  destructive: { bg: colors.destructiveSubtle, fg: colors.destructive },
+  borderHeavy: { bg: colors.borderHeavy, fg: colors.mutedForeground },
+};
 
 export function MobileWorkspaceCard({
   item,
@@ -29,10 +43,14 @@ export function MobileWorkspaceCard({
   claiming = false,
   accessLossReason = null,
   onPress,
+  onLongPress,
   onClaim,
 }: MobileWorkspaceCardProps) {
   const detailText = workspaceDetailText(item);
   const statusColor = colors[mobileColorKeyForWorkStatusTone(item.view.statusIndicator.tone)];
+  const statusPill = mobileWorkspaceStatusPill(item.view.statusIndicator);
+  const pillColors = STATUS_PILL_COLORS[statusPill.colorKey];
+  const needsAttention = mobileWorkItemNeedsAttention(item.view);
   const unclaimed = item.view.unclaimed;
   const locked = Boolean(accessLossReason);
   const canClaim = Boolean(onClaim) && unclaimed && !locked;
@@ -42,12 +60,15 @@ export function MobileWorkspaceCard({
       accessibilityRole="button"
       accessibilityLabel={`${item.view.title}, ${item.view.statusIndicator.label}`}
       onPress={onPress}
+      onLongPress={onLongPress}
       style={({ pressed }) => [
         styles.card,
         compact && styles.cardCompact,
+        needsAttention && styles.cardAttention,
         pressed && styles.cardPressed,
       ]}
     >
+      {needsAttention ? <View style={styles.attentionBar} /> : null}
       <View style={styles.cardTop}>
         <View style={[styles.iconTile, compact && styles.iconTileCompact]}>
           <MobileIcon
@@ -83,6 +104,13 @@ export function MobileWorkspaceCard({
           </View>
         </View>
       </View>
+      {!compact ? (
+        <View style={styles.pillRow}>
+          <View style={[styles.pill, { backgroundColor: pillColors.bg }]}>
+            <Text style={[styles.pillText, { color: pillColors.fg }]}>{statusPill.label}</Text>
+          </View>
+        </View>
+      ) : null}
       {detailText && !compact ? (
         <View style={styles.promptBlock}>
           <Text style={styles.promptText} numberOfLines={2}>
@@ -118,18 +146,13 @@ export function MobileWorkspaceCard({
   );
 }
 
+// The status pill above already surfaces item.view.statusIndicator.label, so
+// this only adds a *second* line when there's something further to say:
+// what's actually happening (activityPreview), or why the workspace can't
+// be commanded right now.
 function workspaceDetailText(item: MobileWorkItem): string | null {
   if (item.view.activityPreview) {
     return item.view.activityPreview;
-  }
-  if (item.view.unclaimed) {
-    return item.view.statusIndicator.label;
-  }
-  if (
-    item.view.statusIndicator.kind !== "idle" &&
-    item.view.statusIndicator.kind !== "ready"
-  ) {
-    return item.view.statusIndicator.label;
   }
   if (item.view.commandability !== "commandable") {
     return item.view.commandabilityLabel;
@@ -146,14 +169,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing[3],
     paddingVertical: spacing[3],
     gap: spacing[3],
+    overflow: "hidden",
   },
   cardCompact: {
     borderRadius: 20,
     paddingVertical: spacing[2],
   },
+  // Attention cards (mockup B): a warning accent bar down the left edge,
+  // matching the workspace list's "needs your attention" treatment.
+  cardAttention: {
+    paddingLeft: spacing[3] + 3.5,
+  },
+  attentionBar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3.5,
+    backgroundColor: colors.warning,
+  },
   cardPressed: {
     opacity: 0.82,
     backgroundColor: colors.accent,
+  },
+  pillRow: {
+    flexDirection: "row",
+  },
+  pill: {
+    borderRadius: radius.full,
+    paddingHorizontal: spacing[2],
+    paddingVertical: 4,
+  },
+  pillText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   cardTop: {
     flexDirection: "row",
