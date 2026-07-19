@@ -56,6 +56,25 @@ export function MobileAutomationDetailScreen({ automationId }: MobileAutomationD
     }
   }
 
+  if (detail.unavailable) {
+    // Mirrors MobileAutomationsScreen's list-level "unavailable" copy (the
+    // deployed server has no /v1/automations route mounted — see
+    // server/proliferate/main.py, AUTOMATIONS PARKED) — a deep link into
+    // this specific automation on such a server is a server capability
+    // gap, not a missing/deleted automation, so it gets that copy instead
+    // of "Automation not found".
+    return (
+      <MobileScreen contentStyle={styles.screenContent}>
+        <View style={styles.centered}>
+          <Text style={styles.centeredTitle}>Automations aren't available on this server yet</Text>
+          <Text style={styles.centeredText}>
+            This server build doesn't support scheduled automations yet. Check back after the next deploy.
+          </Text>
+        </View>
+      </MobileScreen>
+    );
+  }
+
   if (detail.notFound) {
     return (
       <MobileScreen contentStyle={styles.screenContent}>

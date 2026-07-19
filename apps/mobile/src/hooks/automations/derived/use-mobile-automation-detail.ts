@@ -21,7 +21,14 @@ export function useMobileAutomationDetail(automationId: string | null) {
   const automationFromList = automationId
     ? inventory.automations.find((candidate) => candidate.id === automationId) ?? null
     : null;
-  const detailEnabled = automationId !== null && automationFromList === null;
+  // Group J, Part 2.5: when the list itself is unavailable on this server
+  // build (automations parked — see mobile-automations-availability.ts), a
+  // direct detail fetch would 404 the same way the list did, so there's no
+  // point firing it.
+  const detailEnabled =
+    automationId !== null
+    && automationFromList === null
+    && inventory.loadState.kind !== "unavailable";
   const detailQuery = useAutomationDetail(automationId, detailEnabled);
 
   const state = resolveMobileAutomationDetailState({
@@ -48,6 +55,7 @@ export function useMobileAutomationDetail(automationId: string | null) {
     item,
     loadingAutomation: state.loading,
     notFound: state.notFound,
+    unavailable: state.unavailable,
     runs: runs.items,
     loadingRuns: runs.isLoading,
   };
