@@ -12,10 +12,19 @@ import {
 } from "./screen/MobileWorkspaceActionSheetSections";
 
 /** Per-workspace management (Workspaces list, mockup B / IA §2.2): rename,
- * archive/restore, delete. `displayName` seeds the rename draft; `onOpen` is
- * only meaningful when the sheet is opened from a list row rather than from
- * inside the workspace itself. Delete's confirm ("cannot be undone", web
- * copy family) lives in this component, not the caller.
+ * archive/restore, delete. `onOpen` is only meaningful when the sheet is
+ * opened from a list row rather than from inside the workspace itself.
+ * Delete's confirm ("cannot be undone", web copy family) lives in this
+ * component, not the caller.
+ *
+ * `displayName` is the workspace's actual explicit display name (nullable —
+ * `null` means "no explicit name set", not "no workspace"). It seeds the
+ * rename draft and is what the no-op guard compares against, so a rename can
+ * be cleared back to `null` (falls back to the derived title elsewhere) and
+ * re-opening the rename form on an unnamed workspace starts from an empty
+ * field rather than pre-filling a fallback the user never chose. `title` is
+ * the derived display title (`view.title`): shown in the delete-confirmation
+ * copy and as the rename field's placeholder, never as the seed.
  *
  * Archive/restore/delete stay open (not closed) while their mutation is
  * pending so `archiving`/`restoring`/`deleting` pending labels render (I1) —
@@ -23,14 +32,15 @@ import {
  * sheet on success and surfacing a toast on failure; this component never
  * closes itself in response to firing one of these. */
 export interface MobileWorkspaceManagementInput {
-  displayName: string;
+  displayName: string | null;
+  title: string;
   archived: boolean;
   renaming: boolean;
   archiving: boolean;
   restoring: boolean;
   deleting: boolean;
   onOpen?: () => void;
-  onRename: (nextName: string) => void;
+  onRename: (nextName: string | null) => void;
   onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -120,7 +130,7 @@ export function MobileWorkspaceActionSheet({
     }
     Alert.alert(
       "Delete workspace?",
-      `Delete "${management.displayName}"? Its record and chat history are removed permanently. This cannot be undone.`,
+      `Delete "${management.title}"? Its record and chat history are removed permanently. This cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -141,10 +151,18 @@ export function MobileWorkspaceActionSheet({
       return;
     }
     const trimmed = renameDraft.trim();
+    const currentDisplayName = management.displayName ?? "";
     setRenameDraft(null);
-    if (trimmed && trimmed !== management.displayName) {
-      management.onRename(trimmed);
+    if (trimmed === currentDisplayName) {
+      // No-op: unchanged from the workspace's actual explicit display name
+      // (comparing against the derived title here would wrongly block a
+      // rename that matches the *fallback* title, and wrongly allow a
+      // resubmit of the name that's already set).
+      return;
     }
+    // Empty clears the explicit display name back to null (falls back to
+    // the derived title elsewhere) rather than being silently dropped.
+    management.onRename(trimmed === "" ? null : trimmed);
   }
 
   return (
@@ -164,6 +182,10 @@ export function MobileWorkspaceActionSheet({
               <MobileTextInput
                 value={renameDraft}
                 onChangeText={setRenameDraft}
+                // The derived title (never the seed - see
+                // MobileWorkspaceManagementInput's doc comment): shows what
+                // an empty/cleared field falls back to without pre-filling it.
+                placeholder={management?.title}
                 autoFocus
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -180,12 +202,16 @@ export function MobileWorkspaceActionSheet({
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  disabled={!renameDraft.trim()}
+                  // Disabled only on a no-op (unchanged from the workspace's
+                  // actual displayName, including "still empty") - unlike the
+                  // old !renameDraft.trim() guard, an empty field IS
+                  // submittable here (it clears the name to null).
+                  disabled={renameDraft.trim() === (management?.displayName ?? "")}
                   onPress={submitRename}
                   style={({ pressed }) => [
                     styles.renameButton,
                     styles.renameButtonPrimary,
-                    !renameDraft.trim() && styles.renameButtonDisabled,
+                    renameDraft.trim() === (management?.displayName ?? "") && styles.renameButtonDisabled,
                     pressed && styles.pressed,
                   ]}
                 >
@@ -226,7 +252,11 @@ export function MobileWorkspaceActionSheet({
                   closeSheet();
                   management.onOpen?.();
                 }),
-                onRename: () => setRenameDraft(management.displayName),
+                // Seeds from the actual explicit displayName (nullable), not
+                // the derived title — an unnamed workspace opens the rename
+                // form empty (placeholder shows the fallback title) instead
+                // of pre-filling it as if the user had chosen it (M3).
+                onRename: () => setRenameDraft(management.displayName ?? ""),
                 // No closeSheet() (I1): archive/restore stay open showing
                 // their pending label while the mutation runs, same as
                 // delete above — the caller's promise closes the sheet on

@@ -238,7 +238,14 @@ export function MobileWorkspacesScreen({
           composerControls={[]}
           showSessionManagement={false}
           management={{
-            displayName: managedItem.view.title,
+            // The actual explicit display name (nullable) — NOT
+            // managedItem.view.title, which is the derived fallback
+            // (displayName ?? lastSessionSummary.title ?? repo.name ??
+            // branch). Seeding rename from the derived title would pre-fill
+            // a name the user never chose and block clearing it back to
+            // null (M3).
+            displayName: managedItem.workspace.displayName ?? null,
+            title: managedItem.view.title,
             archived: managedItem.view.status === "archived",
             renaming: managementActions.isRenamingWorkspace,
             archiving: managementActions.isArchivingWorkspace,
