@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -43,6 +44,20 @@ export default function WorkspaceRoute() {
   const { user, accessToken } = useMobileAuth();
   const router = useRouter();
 
+  // Stable identity: this callback is a dependency of the chat's
+  // pending-prompt restore effect (`useMobilePendingPromptRestore`). Inlined
+  // as a fresh arrow every render, it re-ran that effect on every render — an
+  // async AsyncStorage read whose late resolution could re-apply a stored
+  // pending prompt's "new session" mode, clobbering a session the user had
+  // just tapped (the "tap existing session → shows New session" bug). `router`
+  // from `useRouter()` is stable, so this is stable too.
+  const onSessionSelected = useCallback(
+    (nextSessionId: string) => {
+      router.setParams({ sessionId: nextSessionId });
+    },
+    [router],
+  );
+
   const chat: MobileCloudChat = {
     workspaceId: id,
     workspaceName: "Workspace",
@@ -66,7 +81,7 @@ export default function WorkspaceRoute() {
         chat={chat}
         ownerUserId={user?.id ?? null}
         productToken={accessToken}
-        onSessionSelected={(nextSessionId) => router.setParams({ sessionId: nextSessionId })}
+        onSessionSelected={onSessionSelected}
       />
     </SafeAreaView>
   );
