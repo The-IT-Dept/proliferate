@@ -75,6 +75,46 @@ export function useAgentLoginTerminalWorkflow() {
     });
   }, [queryClient, runtimeUrl, cacheScopeKey]);
 
+  // How many sessions currently have a LIVE login terminal (still starting,
+  // or running and not yet exited/failed). Web's equivalent
+  // (`useAgentLoginTerminalWorkflow`'s `activeSessionCount` +
+  // `refreshAgentReadiness` polling effect) is the safety net this mirrors:
+  // an agent whose login writes credentials without the PTY exiting on its
+  // own would otherwise only refresh on terminal exit/Close, and would show
+  // "not authenticated" until the user manually closes the panel.
+  const activeLoginSessionCount = useMemo(
+    () =>
+      Object.values(sessionsByKind).filter((session) => {
+        if (session.isStarting) {
+          return true;
+        }
+        const status = session.terminal?.status;
+        return status != null && status !== "exited" && status !== "failed";
+      }).length,
+    [sessionsByKind],
+  );
+
+  // Safety-net poll: while any login session above is live, refresh auth
+  // status on the same interval/cadence as web (first tick ~1s, then every
+  // ~2.5s) so credentials written by an agent that doesn't self-exit its PTY
+  // still get picked up. The exit-driven refetch (`handleTerminalExit`/
+  // `closeAuthTerminal`) stays as-is; this only covers the gap while a
+  // terminal is still open.
+  useEffect(() => {
+    if (activeLoginSessionCount === 0 || !connectionAvailable) {
+      return;
+    }
+    const tick = () => {
+      void refreshAgentAuthStatus();
+    };
+    const firstTick = setTimeout(tick, 1000);
+    const interval = setInterval(tick, 2500);
+    return () => {
+      clearTimeout(firstTick);
+      clearInterval(interval);
+    };
+  }, [activeLoginSessionCount, connectionAvailable, refreshAgentAuthStatus]);
+
   const openAuthTerminal = useCallback(
     async (agent: AgentSummary, options?: { restart?: boolean }) => {
       const kind = agent.kind;
