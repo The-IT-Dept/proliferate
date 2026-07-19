@@ -58,8 +58,19 @@ export function MobileAgentLoginTerminalPanel({
           <Text style={styles.headerLabel}>Auth terminal</Text>
           <Text style={styles.headerStatus}>{statusText}</Text>
         </View>
-        <Pressable accessibilityRole="button" onPress={onRestart} hitSlop={8}>
-          <Text style={styles.headerAction}>
+        {/* Gated on isStarting like the Authenticate button
+            (MobileAgentAuthDetailScreen's own `disabled={session?.isStarting}`)
+            — during the opening window `session.terminal` is still null, so
+            an un-gated tap here would skip the "close the old terminal"
+            branch in openAuthTerminal and fire a SECOND
+            startLoginTerminal, opening two PTYs for one session. */}
+        <Pressable
+          accessibilityRole="button"
+          disabled={session.isStarting}
+          onPress={onRestart}
+          hitSlop={8}
+        >
+          <Text style={[styles.headerAction, session.isStarting && styles.headerActionDisabled]}>
             {session.terminal ? "Restart" : "Retry"}
           </Text>
         </Pressable>
@@ -233,6 +244,9 @@ const styles = StyleSheet.create({
     color: colors.info,
     fontSize: 12,
     fontWeight: "600",
+  },
+  headerActionDisabled: {
+    opacity: 0.5,
   },
   commandLine: {
     paddingHorizontal: spacing[3],
