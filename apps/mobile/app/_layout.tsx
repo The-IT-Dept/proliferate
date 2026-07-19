@@ -14,6 +14,7 @@ import { useMobileOnboardingStatus } from "../src/hooks/shell/lifecycle/use-mobi
 import { useMobileScreenTelemetry } from "../src/hooks/telemetry/lifecycle/use-mobile-screen-telemetry";
 import { MobileAuthProvider, useMobileAuth } from "../src/providers/MobileAuthProvider";
 import { MobileCloudProvider } from "../src/providers/MobileCloudProvider";
+import { MobilePushProvider } from "../src/providers/MobilePushProvider";
 import { MobileTelemetryProvider } from "../src/providers/MobileTelemetryProvider";
 import { MobileToastProvider } from "../src/providers/MobileToastProvider";
 import { MobileWorkspaceRuntimeProvider } from "../src/providers/MobileWorkspaceRuntimeProvider";
@@ -44,7 +45,16 @@ export default function RootLayout() {
             <MobileAuthProvider>
               <MobileTelemetryProvider>
                 <MobileCloudProvider>
-                  <RootNavigationGate />
+                  {/* Needs a live Expo Router instance (`useRouter`,
+                      `useMobilePushDeepLinkHandler`), which is available
+                      here the same way `RootNavigationGate` below already
+                      relies on router hooks (`useGlobalSearchParams`,
+                      `usePathname`) at this level - the whole `_layout.tsx`
+                      tree renders inside Expo Router's own context, not
+                      just the `<Stack>` further down. */}
+                  <MobilePushProvider>
+                    <RootNavigationGate />
+                  </MobilePushProvider>
                 </MobileCloudProvider>
               </MobileTelemetryProvider>
             </MobileAuthProvider>

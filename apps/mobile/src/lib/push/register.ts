@@ -83,7 +83,6 @@ export async function unregisterMobilePushDevice(
 
 function warnPushDeviceFailure(action: "register" | "unregister", detail: unknown): void {
   if (typeof __DEV__ !== "undefined" && __DEV__) {
-    // eslint-disable-next-line no-console
     console.warn(`[push] ${action} push device failed`, detail);
   }
 }
