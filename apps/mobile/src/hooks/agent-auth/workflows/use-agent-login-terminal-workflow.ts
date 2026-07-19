@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { AgentSummary } from "@anyharness/sdk";
 import {
@@ -50,6 +50,15 @@ export function useAgentLoginTerminalWorkflow() {
   const [sessionsByKind, setSessionsByKind] = useState<
     Record<string, AgentLoginTerminalSessionState>
   >({});
+
+  // Refs so the unmount cleanup below (deliberately a `[]`-deps effect, since
+  // it must fire its cleanup exactly once — on TRUE unmount — not on every
+  // sessionsByKind/closeLoginTerminal identity change) always reads the
+  // latest session state and mutation without needing to be in its deps.
+  const sessionsByKindRef = useRef(sessionsByKind);
+  sessionsByKindRef.current = sessionsByKind;
+  const closeLoginTerminalRef = useRef(closeLoginTerminal);
+  closeLoginTerminalRef.current = closeLoginTerminal;
 
   // Mirrors web's `connectionAvailable`, minus the cloud-sandbox-phase check
   // (mobile has no separate "sandbox provisioning" state surfaced to this
@@ -160,6 +169,33 @@ export function useAgentLoginTerminalWorkflow() {
     },
     [refreshAgentAuthStatus],
   );
+
+  // Backing out of MobileAgentAuthDetailScreen while a login PTY is still
+  // `running`/`starting` only tears down the client-side WS — nothing else
+  // DELETEs the runtime-side login-terminal record, since closeLoginTerminal
+  // is otherwise only reachable via the Close button (closeAuthTerminal).
+  // That leaks a live PTY server-side for every login abandoned by
+  // navigating away instead of closing it. Mirror that close, best-effort,
+  // for every session with a live terminal on unmount — fire-and-forget
+  // (unmount must not block on the network call), same "best effort" spirit
+  // as openAuthTerminal/closeAuthTerminal's own close calls above.
+  useEffect(() => {
+    return () => {
+      for (const session of Object.values(sessionsByKindRef.current)) {
+        const terminal = session.terminal;
+        // Skip terminals that are already dead (exited/failed) — nothing to
+        // tear down server-side, and it's a cheap status check to avoid an
+        // unnecessary DELETE call on unmount.
+        if (!terminal || terminal.status === "exited" || terminal.status === "failed") {
+          continue;
+        }
+        closeLoginTerminalRef.current.mutateAsync(terminal.id).catch(() => {
+          // Best effort — see openAuthTerminal's restart path. The component
+          // is already unmounted, so there's nothing to surface this to.
+        });
+      }
+    };
+  }, []);
 
   return useMemo(
     () => ({
