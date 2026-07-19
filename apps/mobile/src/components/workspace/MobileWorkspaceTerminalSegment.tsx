@@ -100,6 +100,16 @@ export function MobileWorkspaceTerminalSegment({
   const [rosterVisible, setRosterVisible] = useState(false);
   const [closingTerminalId, setClosingTerminalId] = useState<string | null>(null);
   const [renamingTerminalId, setRenamingTerminalId] = useState<string | null>(null);
+  // Bumped on a WebView renderer death (see `MobileTerminalView`'s
+  // `onRendererGone`) and folded into `MobileTerminalActive`'s `key` below
+  // — forcing a full remount is what gets a *fresh* `TerminalStreamController`
+  // (see that class's module doc: "a fresh TerminalStreamController connects
+  // with no afterSeq, so the server replays that terminal's scrollback from
+  // the start"), the same mechanism already used when switching terminals.
+  // Without this, the terminal's live connection would just keep resuming
+  // from its last-seen seq into the newly-reloaded (blank) WebView buffer,
+  // never replaying the scrollback the reload just wiped out.
+  const [rendererEpoch, setRendererEpoch] = useState(0);
 
   // Recomputed from live data every render (not reconciled via effect): if
   // the explicit selection is gone (closed elsewhere) this naturally falls
@@ -208,11 +218,12 @@ export function MobileWorkspaceTerminalSegment({
         </View>
       ) : (
         <MobileTerminalActive
-          key={activeTerminal.id}
+          key={`${activeTerminal.id}:${rendererEpoch}`}
           terminal={activeTerminal}
           index={activeIndex}
           topInset={topInset}
           onOpenRoster={() => setRosterVisible(true)}
+          onRendererGone={() => setRendererEpoch((epoch) => epoch + 1)}
         />
       )}
 
@@ -238,15 +249,35 @@ function MobileTerminalActive({
   index,
   topInset,
   onOpenRoster,
+  onRendererGone,
 }: {
   terminal: TerminalRecord;
   index: number;
   topInset: number;
   onOpenRoster: () => void;
+  /** The WebView's renderer process died and `MobileTerminalView` has
+   * already reloaded itself — the caller (here) needs to force a full
+   * remount so a fresh `TerminalStreamController` re-attaches with no
+   * `afterSeq`, replaying scrollback into the freshly-reloaded (blank)
+   * buffer. Implemented by the parent bumping a key epoch, same mechanism
+   * as switching terminals — see that key's comment. */
+  onRendererGone: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const toast = useMobileToast();
   const viewRef = useRef<MobileTerminalViewHandle>(null);
   const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
+  // The armed sticky modifier's source of truth is this ref, not the
+  // `modifier` state below — React 19's automatic batching means two
+  // `onInput` events that both fire before a render commits would both
+  // still see the same (stale) `modifier` state value if that were the
+  // only place it lived, e.g. an armed Ctrl + two fast keystrokes both
+  // reading "ctrl" and producing Ctrl-C *and* Ctrl-D instead of just the
+  // first. `modifierRef` is read-and-cleared synchronously inside
+  // `handleInput`/the accessory handlers below; `modifier` state exists
+  // purely so `MobileTerminalAccessoryBar` can render the armed affordance
+  // (a chip) — never consulted for the actual byte transform.
+  const modifierRef = useRef<TerminalAccessoryModifier | null>(null);
   const [modifier, setModifier] = useState<TerminalAccessoryModifier | null>(null);
 
   const handleData = useCallback((bytes: Uint8Array) => {
@@ -286,21 +317,45 @@ function MobileTerminalActive({
     [stream.sendResize],
   );
 
+  // Clears the armed modifier synchronously (ref first, so a same-tick
+  // re-read never sees a stale value) and mirrors the clear to state for
+  // the accessory bar's render.
+  const clearModifier = useCallback(() => {
+    if (modifierRef.current !== null) {
+      modifierRef.current = null;
+      setModifier(null);
+    }
+  }, []);
+
   const handleInput = useCallback(
     (data: string) => {
-      stream.sendInput(applyTerminalAccessoryModifier(modifier, data));
-      if (modifier) {
+      // Read-and-clear the ref SYNCHRONOUSLY, in this call, before
+      // `sendInput` — two `onInput` events fired back-to-back (both queued
+      // in the same batch) still each get their own read of `modifierRef`
+      // since the ref mutation isn't deferred like the `setModifier` state
+      // update is.
+      const armed = modifierRef.current;
+      if (armed) {
+        modifierRef.current = null;
         setModifier(null);
       }
+      stream.sendInput(applyTerminalAccessoryModifier(armed, data));
     },
-    [modifier, stream.sendInput],
+    [stream.sendInput],
   );
 
   function handleAccessoryKeyPress(id: TerminalAccessoryKeyId) {
     if (id === "ctrl" || id === "alt") {
-      setModifier((current) => (current === id ? null : id));
+      const next = modifierRef.current === id ? null : id;
+      modifierRef.current = next;
+      setModifier(next);
       return;
     }
+    // An immediate (non-sticky) accessory key sends its own bytes verbatim
+    // — composing it with an armed Ctrl/Alt isn't a meaningful action, so
+    // clear the arm rather than letting it leak onto the NEXT real
+    // keystroke.
+    clearModifier();
     const bytes = bytesForAccessoryKey(id);
     if (bytes !== null) {
       stream.sendInput(bytes);
@@ -308,11 +363,36 @@ function MobileTerminalActive({
   }
 
   function handleInterrupt() {
+    // Same reasoning as the accessory keys above: Interrupt is its own
+    // immediate action, not something to compose with an armed modifier.
+    clearModifier();
     const byte = controlByteForChar("c");
     if (byte !== null) {
       stream.sendInput(byte);
     }
   }
+
+  // Non-fatal bridge/webview-page errors (a caught guest `window.onerror`,
+  // the WebView failing to load, or an HTTP error loading it) — the
+  // terminal isn't necessarily dead, so just surface it; nothing to recover
+  // here beyond what the user already sees.
+  const handleBridgeError = useCallback(
+    (message: string) => {
+      toast.show({ tone: "error", message: `Terminal error: ${message}` });
+    },
+    [toast],
+  );
+
+  // The renderer process died — `MobileTerminalView` has already reloaded
+  // its own WebView by the time this fires (see that prop's doc comment).
+  // Toast it (this failure mode is different/more alarming than an
+  // ordinary stream disconnect, which the status line already covers) and
+  // ask the parent to force a fresh `TerminalStreamController` re-attach so
+  // the reloaded, now-blank buffer gets its scrollback replayed back in.
+  const handleRendererGone = useCallback(() => {
+    toast.show({ tone: "error", message: "Terminal disconnected — reloading." });
+    onRendererGone();
+  }, [onRendererGone, toast]);
 
   const displayTitle = terminalDisplayTitle(terminal, Math.max(index, 0));
   const connectionLabel = stream.exited
@@ -333,6 +413,8 @@ function MobileTerminalActive({
         onInput={handleInput}
         onResize={handleResize}
         onReady={handleReady}
+        onBridgeError={handleBridgeError}
+        onRendererGone={handleRendererGone}
       />
 
       {/* Status line + roster trigger — thin overlay over the terminal
