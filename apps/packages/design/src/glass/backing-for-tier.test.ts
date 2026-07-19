@@ -71,8 +71,8 @@ describe("backingForTier", () => {
     }
   });
 
-  it("shapes the tab bar, FAB, and composer dock as full capsules (§6)", () => {
-    for (const variant of ["tab", "fab", "dock"] as const) {
+  it("shapes the tab bar, FAB, composer dock, and shell segmented control as full capsules (§6)", () => {
+    for (const variant of ["tab", "fab", "dock", "segmented"] as const) {
       const backing = backingForTier("native", variant, dark);
       expect(backing.props.style?.borderRadius).toBe(dark.radius.capsule);
     }

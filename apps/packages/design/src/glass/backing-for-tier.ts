@@ -12,7 +12,14 @@ import { isDarkTheme, type GlassTokens } from "./tokens";
  */
 
 /** The allowlisted glass call-sites (§3.2), reused by GlassSurface's props. */
-export type GlassSurfaceVariant = "nav" | "tab" | "toolbar" | "sheet" | "fab" | "dock";
+export type GlassSurfaceVariant =
+  | "nav"
+  | "tab"
+  | "toolbar"
+  | "sheet"
+  | "fab"
+  | "dock"
+  | "segmented";
 
 export type BackingResult =
   | { kind: "GlassView"; props: { glassEffectStyle: GlassStyle; style: ViewStyle } }
@@ -33,6 +40,9 @@ function shapeStyle(variant: GlassSurfaceVariant, tokens: GlassTokens): ViewStyl
     case "tab":
     case "fab":
     case "dock":
+    // §3.2 workspace-shell segmented control: one glass capsule holding the
+    // four segments (Sessions/Chat/Term/Diff), radius = height/2 (§6).
+    case "segmented":
       return { borderRadius: tokens.radius.capsule };
     case "sheet":
       return { borderTopLeftRadius: 38, borderTopRightRadius: 38 };
