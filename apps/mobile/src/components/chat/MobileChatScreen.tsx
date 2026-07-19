@@ -6,6 +6,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack } from "expo-router";
 import { ContextCapsule } from "@proliferate/design/glass";
 import {
@@ -62,6 +63,21 @@ export function MobileChatScreen({
   onSessionSelected,
 }: MobileChatScreenProps) {
   const keyboardInset = useVisualViewportKeyboardInset();
+  const insets = useSafeAreaInsets();
+  // This route's header is compact + `headerTransparent` (blur glass) — set on
+  // the workspace/[id] Stack.Screen in app/_layout.tsx. A transparent header
+  // floats over the content, and React Navigation's native-stack docs are
+  // explicit: "if you don't want your content to appear under the header, you
+  // need to manually add a top margin to your content. React Navigation won't
+  // do it automatically." So we offset the whole body by the header height.
+  // (expo-router doesn't re-export `useHeaderHeight`, and adding
+  // @react-navigation/elements would risk the pinned react version, so we
+  // reconstruct the compact-header height: status-bar/top safe inset + the
+  // platform nav-bar height.) This keeps the signature ContextCapsule — which
+  // the IA requires "always present, under the title" — below the header
+  // instead of hidden beneath it, with the transcript scrolling in the region
+  // below and the composer above the keyboard + home indicator.
+  const headerHeight = insets.top + Platform.select({ ios: 44, default: 56 });
   const [draft, setDraft] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(chat.sessionId);
   const [launchSelection, setLaunchSelection] = useState<CloudLaunchComposerSelection>({
@@ -271,7 +287,7 @@ export function MobileChatScreen({
         : "Waiting for workspace";
   return (
     <KeyboardAvoidingView
-      style={styles.root}
+      style={[styles.root, { paddingTop: headerHeight }]}
       behavior={Platform.select({ ios: "padding", default: undefined })}
       keyboardVerticalOffset={0}
     >
