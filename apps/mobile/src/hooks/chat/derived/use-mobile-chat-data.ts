@@ -94,7 +94,15 @@ export function useMobileChatData({
   const workspaceQuery = useCloudWorkspace(chat.workspaceId, true);
   const workspace = workspaceQuery.data ?? null;
 
-  const sessionsQuery = useWorkspaceSessionsQuery({ workspaceId: chat.workspaceId });
+  // Gated on a real anyharnessWorkspaceId (not just chat.workspaceId, which
+  // is the cloud workspace id and is present well before the underlying
+  // AnyHarness workspace finishes provisioning) — mirrors the pre-E1 manual
+  // query's `enabled: Boolean(workspace?.anyharnessWorkspaceId)`, so a
+  // pre-provisioning window can't fire a sessions.list() with an empty id.
+  const sessionsQuery = useWorkspaceSessionsQuery({
+    workspaceId: chat.workspaceId,
+    enabled: Boolean(workspace?.anyharnessWorkspaceId),
+  });
   const sessions = useMemo(() => {
     if (!workspace) {
       return [];
