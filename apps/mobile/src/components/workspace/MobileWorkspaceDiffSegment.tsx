@@ -12,6 +12,9 @@ import {
 import { MobileIcon } from "../primitives/MobileIcon";
 import { MobileDiffViewer } from "./diff/MobileDiffViewer";
 import { MobilePrStatusBadge } from "./diff/MobilePrStatusBadge";
+import { MobilePublishDock } from "./publish/MobilePublishDock";
+import { MobilePublishSheet } from "./publish/MobilePublishSheet";
+import { useMobilePublishWorkflow } from "../../hooks/workspace/workflows/use-mobile-publish-workflow";
 import { parseUnifiedDiff } from "../../lib/domain/workspace/mobile-diff-parser";
 import {
   buildMobileChangesList,
@@ -45,16 +48,22 @@ interface MobileWorkspaceDiffSegmentProps {
  * reach for. Tapping a file selects it (highlighted row) and loads its
  * unified diff via `client.git.getDiff`, parsed by the pure
  * `mobile-diff-parser` and rendered by `MobileDiffViewer` — never a WebView.
- * Everything here is read-only: no commit/push/stage actions (mockup H's
- * bottom "Commit… / Push" dock is out of Group G's scope — a future
- * publish-workflow group owns those mutations), so there is nothing that
- * mutates and nothing to toast; query failures get the same inline
- * "Couldn't load / tap to retry" treatment Sessions and Term use.
+ * Row 29 adds mockup H's bottom "Commit… / Push" dock back in, scoped
+ * exactly to that row: `MobilePublishDock` (visible only in "Working tree"
+ * mode, per `MobilePublishView.showEntryPoint`) opens `MobilePublishSheet`,
+ * both driven by `useMobilePublishWorkflow` — see that hook's doc comment
+ * for how it composes the real `@anyharness/sdk-react` git/PR mutations with
+ * the pure `mobile-publish-view`/`mobile-publish-workflow-runner` domain
+ * logic. Everything else in this segment stays exactly as read-only as
+ * before: query failures still get the plain inline "Couldn't load / tap to
+ * retry" treatment; only the publish sheet's own mutations toast on failure.
  */
 export function MobileWorkspaceDiffSegment({ topInset }: MobileWorkspaceDiffSegmentProps) {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<MobileDiffMode>("working_tree");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [publishSheetOpen, setPublishSheetOpen] = useState(false);
+  const publish = useMobilePublishWorkflow();
 
   const statusQuery = useGitStatusQuery();
   // I2 — precedence mirrors web's `resolveGitPanelBaseRef`
@@ -113,13 +122,23 @@ export function MobileWorkspaceDiffSegment({ topInset }: MobileWorkspaceDiffSegm
     ? { kind: prStatusKindFromSummary({ state: pr.state, draft: pr.draft }), number: pr.number }
     : null;
 
+  // Publish only ever acts on the working tree/current branch, never a diff
+  // against another branch, so the dock only shows in that mode — and only
+  // once there's something to commit, publish, or a PR to view
+  // (`MobilePublishView.showEntryPoint`, mirrors G's own "nothing to do"
+  // discipline rather than always-on chrome).
+  const publishDockVisible = mode === "working_tree" && publish.view.showEntryPoint;
+
   return (
     <View style={styles.root}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: topInset + spacing[2], paddingBottom: insets.bottom + 48 },
+          {
+            paddingTop: topInset + spacing[2],
+            paddingBottom: insets.bottom + (publishDockVisible ? 112 : 48),
+          },
         ]}
       >
         <View style={styles.modeRow}>
@@ -211,6 +230,21 @@ export function MobileWorkspaceDiffSegment({ topInset }: MobileWorkspaceDiffSegm
           )
         ) : null}
       </ScrollView>
+
+      {publishDockVisible ? (
+        <MobilePublishDock
+          label={publish.view.primaryLabel}
+          disabled={!publish.view.viewsExistingPrOnly && !!publish.view.disabledReason}
+          submitting={publish.isSubmitting}
+          bottomInset={insets.bottom + spacing[3]}
+          onPress={() => setPublishSheetOpen(true)}
+        />
+      ) : null}
+      <MobilePublishSheet
+        visible={publishSheetOpen}
+        publish={publish}
+        onClose={() => setPublishSheetOpen(false)}
+      />
     </View>
   );
 }
