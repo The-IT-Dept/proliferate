@@ -1,47 +1,46 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { AutomationResponse } from "@proliferate/cloud-sdk";
-import {
-  useAutomations,
-  usePauseAutomation,
-  useResumeAutomation,
-} from "@proliferate/cloud-sdk-react";
+import { useAutomationActions } from "@proliferate/cloud-sdk-react";
+import type { AutomationInventoryItemView } from "@proliferate/product-domain/automations/inventory";
 
+import { useMobileAutomationInventory } from "../../hooks/automations/derived/use-mobile-automation-inventory";
+import { useMobileToast } from "../../providers/MobileToastProvider";
 import { MobileIcon } from "../primitives/MobileIcon";
 import { MobileListRow } from "../primitives/MobileListRow";
 import { MobileEmptyState, MobileScreen } from "../primitives/MobileLayout";
 import { MobileStatusDot } from "../primitives/MobileStatusDot";
 import { colors, radius, spacing } from "../../styles/tokens";
 
-export function MobileAutomationsScreen() {
+interface MobileAutomationsScreenProps {
+  onOpenAutomation: (automationId: string) => void;
+}
+
+export function MobileAutomationsScreen({ onOpenAutomation }: MobileAutomationsScreenProps) {
   // MobileScreen's ScrollView now carries the native content inset
   // (contentInsetAdjustmentBehavior="automatic"), so the tab-bar footprint is
   // applied natively — this is just baseline breathing room under the last row.
   const scrollContentBottomPadding = spacing[8];
-  const [toggleError, setToggleError] = useState<string | null>(null);
   const [togglingAutomationId, setTogglingAutomationId] = useState<string | null>(null);
-  const automations = useAutomations({ ownerScope: "personal" });
-  const pauseAutomation = usePauseAutomation({ ownerScope: "personal" });
-  const resumeAutomation = useResumeAutomation({ ownerScope: "personal" });
+  const inventory = useMobileAutomationInventory();
+  const actions = useAutomationActions();
+  const toast = useMobileToast();
 
-  async function toggleAutomation(automation: AutomationResponse) {
+  async function toggleAutomation(item: AutomationInventoryItemView) {
     if (togglingAutomationId) {
       return;
     }
-    setToggleError(null);
-    setTogglingAutomationId(automation.id);
+    setTogglingAutomationId(item.id);
     try {
-      if (automation.enabled) {
-        await pauseAutomation.mutateAsync(automation.id);
+      if (item.enabled) {
+        await actions.pauseAutomation(item.id);
       } else {
-        await resumeAutomation.mutateAsync(automation.id);
+        await actions.resumeAutomation(item.id);
       }
     } catch (error) {
-      setToggleError(
-        error instanceof Error
-          ? error.message
-          : "Automation status could not be changed.",
-      );
+      toast.show({
+        tone: "error",
+        message: `Couldn't ${item.enabled ? "pause" : "resume"} "${item.title}"${errorSuffix(error)}`,
+      });
     } finally {
       setTogglingAutomationId(null);
     }
@@ -58,28 +57,47 @@ export function MobileAutomationsScreen() {
         <Text style={styles.introText}>Cloud automations you set up on desktop or web.</Text>
       </View>
 
-      {automations.isLoading ? (
+      {inventory.loadState.kind === "loading" ? (
         <MobileEmptyState title="Loading automations" body="Fetching scheduled cloud work." />
-      ) : automations.error ? (
+      ) : inventory.loadState.kind === "unavailable" ? (
+        // The deployed server has no /v1/automations route mounted (see
+        // server/proliferate/main.py — AUTOMATIONS PARKED) rather than a
+        // network/auth failure, so this is worded as a server capability gap,
+        // not something a retry or re-login would fix.
+        <MobileEmptyState
+          title="Automations aren't available on this server yet"
+          body="This server build doesn't support scheduled automations yet. Check back after the next deploy."
+        />
+      ) : inventory.loadState.kind === "error" ? (
         <MobileEmptyState
           title="Could not load automations"
           body="Refresh later or sign in again."
         />
-      ) : (automations.data?.automations ?? []).length === 0 ? (
+      ) : inventory.loadState.kind === "empty" ? (
         <MobileEmptyState
           title="No automations yet"
           body="Create cloud automations from desktop or web. They'll appear here so you can pause, resume, and check status."
         />
       ) : (
-        <View style={styles.list}>
-          {toggleError ? <Text style={styles.listErrorText}>{toggleError}</Text> : null}
-          {(automations.data?.automations ?? []).map((automation) => (
-            <AutomationRow
-              key={automation.id}
-              automation={automation}
-              busy={togglingAutomationId === automation.id}
-              onToggle={() => void toggleAutomation(automation)}
-            />
+        <View style={styles.groups}>
+          {inventory.groups.map((group) => (
+            <View key={group.id} style={styles.group}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{group.label}</Text>
+                <Text style={styles.sectionCount}>{group.count}</Text>
+              </View>
+              <View style={styles.list}>
+                {group.items.map((item) => (
+                  <AutomationRow
+                    key={item.id}
+                    item={item}
+                    busy={togglingAutomationId === item.id}
+                    onPress={() => onOpenAutomation(item.id)}
+                    onToggle={() => void toggleAutomation(item)}
+                  />
+                ))}
+              </View>
+            </View>
           ))}
         </View>
       )}
@@ -91,37 +109,47 @@ export function MobileAutomationsScreen() {
   );
 }
 
+function errorSuffix(error: unknown): string {
+  return error instanceof Error && error.message ? `: ${error.message}` : ".";
+}
+
 function AutomationRow({
-  automation,
+  item,
   busy,
+  onPress,
   onToggle,
 }: {
-  automation: AutomationResponse;
+  item: AutomationInventoryItemView;
   busy: boolean;
+  onPress: () => void;
   onToggle: () => void;
 }) {
   return (
     <MobileListRow
-      leading={<MobileStatusDot status={automation.enabled ? "running" : "paused"} size={8} />}
-      title={automation.title}
-      subtitle={`${automation.schedule.summary} - ${automation.gitOwner}/${automation.gitRepoName}`}
+      onPress={onPress}
+      leading={<MobileStatusDot status={item.enabled ? "running" : "paused"} size={8} />}
+      title={item.title}
+      subtitle={`${item.scheduleLabel} · ${item.repoLabel}`}
       trailing={
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={automation.enabled ? "Pause automation" : "Resume automation"}
+          accessibilityLabel={item.enabled ? "Pause automation" : "Resume automation"}
           accessibilityState={{ disabled: busy }}
           disabled={busy}
           onPress={onToggle}
           style={({ pressed }) => [
             styles.statusPill,
-            !automation.enabled && styles.statusPillPaused,
+            !item.enabled && styles.statusPillPaused,
             busy && styles.statusPillDisabled,
             pressed && styles.pressed,
           ]}
         >
-          <MobileIcon name="calendar-clock" size={12} color={automation.enabled ? colors.success : colors.faint} />
-          <Text style={[styles.statusText, !automation.enabled && styles.statusTextPaused]}>
-            {automation.enabled ? "On" : "Paused"}
+          <MobileIcon name="calendar-clock" size={12} color={item.enabled ? colors.success : colors.faint} />
+          {/* Verbatim from product-domain's inventory-list.ts (same status
+              text web's AutomationInventoryList renders) — not the invented
+              "On"/"Paused" pair this row used before. */}
+          <Text style={[styles.statusText, !item.enabled && styles.statusTextPaused]}>
+            {item.statusLabel}
           </Text>
         </Pressable>
       }
@@ -152,18 +180,32 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 17,
   },
+  groups: {
+    gap: spacing[5],
+  },
+  group: {
+    gap: 0,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[4],
+    paddingBottom: spacing[1],
+  },
+  sectionTitle: {
+    color: colors.faint,
+    fontSize: 12.5,
+    fontWeight: "600",
+  },
+  sectionCount: {
+    color: colors.faint,
+    fontSize: 12.5,
+  },
   list: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.borderLight,
-  },
-  listErrorText: {
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-    color: colors.destructive,
-    fontSize: 12.5,
-    lineHeight: 17,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderLight,
   },
   statusPill: {
     minHeight: 28,

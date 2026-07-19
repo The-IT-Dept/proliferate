@@ -1,10 +1,12 @@
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { MobileAutomationsScreen } from "../../../src/components/automations/MobileAutomationsScreen";
 import { colors } from "../../../src/styles/tokens";
 
 export default function AutomationsTabRoute() {
+  const router = useRouter();
+
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: colors.background }}
@@ -19,7 +21,10 @@ export default function AutomationsTabRoute() {
           here, which would render it at y=0 under the large title and stop the
           scroll view from being the screen's first child. */}
       <Stack.Screen options={{ title: "Automations" }} />
-      <MobileAutomationsScreen />
+      <MobileAutomationsScreen
+        onOpenAutomation={(automationId) =>
+          router.push({ pathname: "/automations/[id]", params: { id: automationId } })}
+      />
     </SafeAreaView>
   );
 }
