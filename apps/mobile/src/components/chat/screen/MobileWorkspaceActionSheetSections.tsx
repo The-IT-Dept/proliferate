@@ -15,6 +15,27 @@ import {
   MobileWorkspaceActionSheetSection,
 } from "./MobileWorkspaceActionSheetRows";
 
+/**
+ * Workspace-management rows (Workspaces list, mockup B / IA §2.2 long-press
+ * menu): rename, archive/unarchive, delete. Kept separate from the
+ * chat-only session/composer concerns above so a list callsite can opt in
+ * without also standing up sessions/composerControls data it doesn't have.
+ * Verbatim labels/ordering follow web's WorkspaceItemMenu (parity map row
+ * 9): Rename, Archive.../Unarchive, ... Delete workspace... .
+ */
+export interface MobileWorkspaceManagementView {
+  archived: boolean;
+  renaming: boolean;
+  archiving: boolean;
+  restoring: boolean;
+  deleting: boolean;
+  onOpen?: () => void;
+  onRename: () => void;
+  onArchive: () => void;
+  onRestore: () => void;
+  onDelete: () => void;
+}
+
 export function MobileWorkspaceActionSheetSections({
   branchLabel,
   runtimeLabel,
@@ -27,6 +48,8 @@ export function MobileWorkspaceActionSheetSections({
   activeSessionId,
   newSessionMode,
   composerControls,
+  showSessionManagement = true,
+  management,
   onClaim,
   onNewSession,
   onSelectSession,
@@ -44,6 +67,10 @@ export function MobileWorkspaceActionSheetSections({
   activeSessionId: string | null;
   newSessionMode: boolean;
   composerControls: readonly CloudChatComposerControlView[];
+  /** False from the Workspaces list: there's no active chat, so the
+   * Configuration/Sessions sections (which assume one) are hidden. */
+  showSessionManagement?: boolean;
+  management?: MobileWorkspaceManagementView;
   onClaim: () => void;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
@@ -69,49 +96,83 @@ export function MobileWorkspaceActionSheetSections({
         </MobileWorkspaceActionSheetSection>
       ) : null}
 
-      <MobileWorkspaceActionSheetSection title="Configuration">
-        {composerControls.map((control) => (
-          <MobileWorkspaceActionSheetRow
-            key={control.id}
-            icon={controlIcon(control)}
-            title={cloudComposerControlTitle(control)}
-            value={formatCloudComposerControlValueLabel(control) ?? "Choose"}
-            disabled={unclaimed || control.disabled}
-            onPress={() => onOpenControlDetail(control.id)}
-          />
-        ))}
-      </MobileWorkspaceActionSheetSection>
+      {management?.onOpen ? (
+        <MobileWorkspaceActionSheetSection>
+          <MobileWorkspaceActionSheetRow icon="workspaces" title="Open" onPress={management.onOpen} />
+        </MobileWorkspaceActionSheetSection>
+      ) : null}
 
-      <MobileWorkspaceActionSheetSection title="Sessions" count={sessions.length}>
-        <MobileWorkspaceActionSheetRow
-          icon="plus"
-          title="New session"
-          subtitle={
-            promptSubmitting
-              ? "Wait for the current prompt first."
-              : sessions.length
-                ? `Start separately from ${formatMobileWorkspaceActionSessionCount(sessions.length)}.`
-                : "Start the first chat here."
-          }
-          selected={newSessionMode}
-          disabled={unclaimed || promptSubmitting}
-          onPress={onNewSession}
-        />
-        {sessions.map((session, index) => {
-          const selected = session.sessionId === activeSessionId && !newSessionMode;
-          return (
-            <MobileWorkspaceActionSessionRow
-              key={session.sessionId}
-              session={session}
-              index={index}
-              selected={selected}
-              onPress={() => onSelectSession(session.sessionId)}
+      {showSessionManagement ? (
+        <>
+          <MobileWorkspaceActionSheetSection title="Configuration">
+            {composerControls.map((control) => (
+              <MobileWorkspaceActionSheetRow
+                key={control.id}
+                icon={controlIcon(control)}
+                title={cloudComposerControlTitle(control)}
+                value={formatCloudComposerControlValueLabel(control) ?? "Choose"}
+                disabled={unclaimed || control.disabled}
+                onPress={() => onOpenControlDetail(control.id)}
+              />
+            ))}
+          </MobileWorkspaceActionSheetSection>
+
+          <MobileWorkspaceActionSheetSection title="Sessions" count={sessions.length}>
+            <MobileWorkspaceActionSheetRow
+              icon="plus"
+              title="New session"
+              subtitle={
+                promptSubmitting
+                  ? "Wait for the current prompt first."
+                  : sessions.length
+                    ? `Start separately from ${formatMobileWorkspaceActionSessionCount(sessions.length)}.`
+                    : "Start the first chat here."
+              }
+              selected={newSessionMode}
+              disabled={unclaimed || promptSubmitting}
+              onPress={onNewSession}
             />
-          );
-        })}
-      </MobileWorkspaceActionSheetSection>
+            {sessions.map((session, index) => {
+              const selected = session.sessionId === activeSessionId && !newSessionMode;
+              return (
+                <MobileWorkspaceActionSessionRow
+                  key={session.sessionId}
+                  session={session}
+                  index={index}
+                  selected={selected}
+                  onPress={() => onSelectSession(session.sessionId)}
+                />
+              );
+            })}
+          </MobileWorkspaceActionSheetSection>
+        </>
+      ) : null}
 
       <MobileWorkspaceActionSheetSection title="Workspace">
+        {management ? (
+          <MobileWorkspaceActionSheetRow
+            icon="pencil"
+            title="Rename"
+            disabled={management.renaming}
+            onPress={management.onRename}
+          />
+        ) : null}
+        {management && !management.archived ? (
+          <MobileWorkspaceActionSheetRow
+            icon="archive"
+            title={management.archiving ? "Archiving…" : "Archive..."}
+            disabled={management.archiving}
+            onPress={management.onArchive}
+          />
+        ) : null}
+        {management?.archived ? (
+          <MobileWorkspaceActionSheetRow
+            icon="archive"
+            title={management.restoring ? "Restoring…" : "Unarchive"}
+            disabled={management.restoring}
+            onPress={management.onRestore}
+          />
+        ) : null}
         <MobileWorkspaceActionSheetRow
           icon="copy"
           title="Copy branch"
@@ -127,6 +188,18 @@ export function MobileWorkspaceActionSheetSections({
           chevron={false}
         />
       </MobileWorkspaceActionSheetSection>
+
+      {management ? (
+        <MobileWorkspaceActionSheetSection>
+          <MobileWorkspaceActionSheetRow
+            icon="trash"
+            title={management.deleting ? "Deleting…" : "Delete workspace..."}
+            disabled={management.deleting}
+            destructive
+            onPress={management.onDelete}
+          />
+        </MobileWorkspaceActionSheetSection>
+      ) : null}
     </ScrollView>
   );
 }

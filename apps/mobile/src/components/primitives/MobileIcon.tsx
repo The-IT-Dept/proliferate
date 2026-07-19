@@ -41,7 +41,10 @@ export type MobileIconName =
   | "git-branch"
   | "shield"
   | "folder"
-  | "terminal";
+  | "terminal"
+  | "archive"
+  | "trash"
+  | "pencil";
 
 interface MobileIconProps {
   name: MobileIconName;
@@ -360,6 +363,31 @@ export function MobileIcon({ name, size = 18, color = colors.fg }: MobileIconPro
       return (
         <Svg {...props}>
           <Path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </Svg>
+      );
+    case "archive":
+      return (
+        <Svg {...props}>
+          <Rect x="3" y="3" width="18" height="5" rx="1.5" />
+          <Path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+          <Line x1="10" y1="13" x2="14" y2="13" />
+        </Svg>
+      );
+    case "trash":
+      return (
+        <Svg {...props}>
+          <Path d="M4 7h16" />
+          <Path d="M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" />
+          <Path d="M6 7l1 12.5A2 2 0 0 0 9 21h6a2 2 0 0 0 2-1.5L18 7" />
+          <Line x1="10" y1="11" x2="10" y2="17" />
+          <Line x1="14" y1="11" x2="14" y2="17" />
+        </Svg>
+      );
+    case "pencil":
+      return (
+        <Svg {...props}>
+          <Path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+          <Line x1="14.5" y1="7" x2="17.5" y2="10" />
         </Svg>
       );
   }

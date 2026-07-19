@@ -43,6 +43,7 @@ export function MobileWorkspaceActionSheetRow({
   valueMono,
   selected,
   disabled,
+  destructive,
   chevron = true,
   onPress,
 }: {
@@ -53,6 +54,8 @@ export function MobileWorkspaceActionSheetRow({
   valueMono?: boolean;
   selected?: boolean;
   disabled?: boolean;
+  /** Red icon/title, for irreversible actions (e.g. "Delete workspace..."). */
+  destructive?: boolean;
   chevron?: boolean;
   onPress?: () => void;
 }) {
@@ -70,10 +73,21 @@ export function MobileWorkspaceActionSheetRow({
       ]}
     >
       <View style={styles.rowIcon}>
-        <MobileIcon name={icon} size={16} color={disabled ? colors.faint : colors.fg} />
+        <MobileIcon
+          name={icon}
+          size={16}
+          color={disabled ? colors.faint : destructive ? colors.destructive : colors.fg}
+        />
       </View>
       <View style={styles.rowText}>
-        <Text style={[styles.rowTitle, disabled && styles.rowTitleDisabled]} numberOfLines={1}>
+        <Text
+          style={[
+            styles.rowTitle,
+            disabled && styles.rowTitleDisabled,
+            destructive && !disabled && styles.rowTitleDestructive,
+          ]}
+          numberOfLines={1}
+        >
           {title}
         </Text>
         {subtitle ? (
@@ -90,7 +104,9 @@ export function MobileWorkspaceActionSheetRow({
           {value}
         </Text>
       ) : null}
-      {chevron ? <MobileIcon name="chevron-right" size={14} color={colors.faint} /> : null}
+      {chevron && !destructive ? (
+        <MobileIcon name="chevron-right" size={14} color={colors.faint} />
+      ) : null}
     </Pressable>
   );
 }
@@ -259,6 +275,9 @@ const styles = StyleSheet.create({
   },
   rowTitleDisabled: {
     color: colors.faint,
+  },
+  rowTitleDestructive: {
+    color: colors.destructive,
   },
   rowSubtitle: {
     color: colors.faint,
