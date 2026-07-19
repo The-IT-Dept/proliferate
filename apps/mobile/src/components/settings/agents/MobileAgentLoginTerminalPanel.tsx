@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useMobileToast } from "../../../providers/MobileToastProvider";
 import { useAgentLoginTerminalStream } from "../../../hooks/agent-auth/derived/use-agent-login-terminal-stream";
@@ -11,6 +11,11 @@ import { colors, radius, spacing } from "../../../styles/tokens";
 interface MobileAgentLoginTerminalPanelProps {
   session: AgentLoginTerminalSessionState;
   onExit: (kind: string, code: number | null) => void;
+  /** Re-runs `startLoginTerminal` for this kind (web: "Restart auth"/"Retry
+   * auth" — `AgentLoginTerminalPanel.tsx`). */
+  onRestart: () => void;
+  /** Tears the session down and closes the terminal record (web: "Close"). */
+  onClose: () => void;
 }
 
 /**
@@ -27,6 +32,8 @@ interface MobileAgentLoginTerminalPanelProps {
 export function MobileAgentLoginTerminalPanel({
   session,
   onExit,
+  onRestart,
+  onClose,
 }: MobileAgentLoginTerminalPanelProps) {
   const toast = useMobileToast();
   const viewRef = useRef<MobileTerminalViewHandle>(null);
@@ -81,8 +88,18 @@ export function MobileAgentLoginTerminalPanel({
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.headerLabel}>Auth terminal</Text>
-        <Text style={styles.headerStatus}>{statusText}</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.headerLabel}>Auth terminal</Text>
+          <Text style={styles.headerStatus}>{statusText}</Text>
+        </View>
+        <Pressable accessibilityRole="button" onPress={onRestart} hitSlop={8}>
+          <Text style={styles.headerAction}>
+            {session.terminal ? "Restart" : "Retry"}
+          </Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={8}>
+          <Text style={styles.headerAction}>Close</Text>
+        </Pressable>
       </View>
 
       {session.terminal ? (
@@ -135,6 +152,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderLight,
   },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[2],
+  },
   headerLabel: {
     color: colors.fg,
     fontSize: 12.5,
@@ -143,6 +167,11 @@ const styles = StyleSheet.create({
   headerStatus: {
     color: colors.faint,
     fontSize: 12,
+  },
+  headerAction: {
+    color: colors.info,
+    fontSize: 12,
+    fontWeight: "600",
   },
   commandLine: {
     paddingHorizontal: spacing[3],

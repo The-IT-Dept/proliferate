@@ -125,6 +125,8 @@ export function MobileAgentAuthDetailScreen({ kind }: MobileAgentAuthDetailScree
           <MobileAgentLoginTerminalPanel
             session={session}
             onExit={(exitedKind, code) => void workflow.handleTerminalExit(exitedKind, code)}
+            onRestart={handleAuthenticate}
+            onClose={() => void workflow.closeAuthTerminal(kind)}
           />
         ) : null}
       </Section>
