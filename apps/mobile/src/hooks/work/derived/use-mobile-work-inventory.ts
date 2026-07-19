@@ -45,41 +45,65 @@ export interface MobileWorkInventory {
   refetch: () => Promise<void>;
 }
 
+export type MobileWorkInventoryContent = Pick<
+  MobileWorkInventory,
+  "groups" | "items" | "recentItems" | "attentionCount"
+>;
+
+/**
+ * Pure selector: workspace summaries in, grouped/sorted mobile inventory
+ * out. Extracted from useMobileWorkInventory's useMemo so it's unit-testable
+ * without rendering the hook (no RN/DOM test harness in this app) — see
+ * use-mobile-work-inventory.test.ts, which pins the recency-bucketing field
+ * (`item.view.lastActivityMs`, NOT `createdAtMs`) as a regression guard (M5).
+ */
+export function buildMobileWorkInventory(
+  data: readonly CloudWorkspaceSummary[],
+  filters?: CloudWorkFilters,
+): MobileWorkInventoryContent {
+  const workspaceById = new Map(data.map((workspace) => [workspace.id, workspace]));
+  // buildCloudWorkRecencyInventory dedupes, filters, sorts, and shapes each
+  // workspace into a CloudWorkItemView; its own recency buckets
+  // (today/this_week/last_week/earlier) don't match the web workspaces-list
+  // this screen is parity-mapped to, so only the flattened, already-sorted
+  // item list is kept from it — grouping is redone by
+  // groupByMobileWorkRecency (mobile-work-recency.ts), whose buckets do
+  // match.
+  const items = buildCloudWorkRecencyInventory(data, { filters })
+    .flatMap((group) => group.items)
+    .flatMap((view) => {
+      const workspace = workspaceById.get(view.id);
+      if (!workspace) {
+        return [];
+      }
+      return [{
+        view,
+        workspace,
+        chat: mobileCloudChatForWorkspace(workspace, view),
+      }];
+    });
+  // Bucketed by last-activity recency, not creation time (M4: recency
+  // grouping is always by lastActivity regardless of the sort control) — a
+  // workspace created long ago but active moments ago belongs in "today",
+  // not wherever its createdAtMs would land it.
+  const groups = groupByMobileWorkRecency(items, (item) => item.view.lastActivityMs).map(
+    (group) => ({ view: { id: group.id, label: group.label }, items: group.items }),
+  );
+  const recentItems = [...items]
+    .sort((left, right) => right.view.lastActivityMs - left.view.lastActivityMs)
+    .slice(0, 5);
+  const attentionCount = deriveMobileWorkAttentionCount(items.map((item) => item.view));
+  return { groups, items, recentItems, attentionCount };
+}
+
 export function useMobileWorkInventory(filters?: CloudWorkFilters): MobileWorkInventory {
   const visibleWorkspaces = useVisibleCloudWorkspaces();
   const data = visibleWorkspaces.data;
 
-  const inventory = useMemo(() => {
-    const workspaceById = new Map(data.map((workspace) => [workspace.id, workspace]));
-    // buildCloudWorkRecencyInventory dedupes, filters, sorts, and shapes each
-    // workspace into a CloudWorkItemView; its own recency buckets
-    // (today/this_week/last_week/earlier) don't match the web workspaces-list
-    // this screen is parity-mapped to, so only the flattened, already-sorted
-    // item list is kept from it — grouping is redone by
-    // groupByMobileWorkRecency (mobile-work-recency.ts), whose buckets do
-    // match.
-    const items = buildCloudWorkRecencyInventory(data, { filters })
-      .flatMap((group) => group.items)
-      .flatMap((view) => {
-        const workspace = workspaceById.get(view.id);
-        if (!workspace) {
-          return [];
-        }
-        return [{
-          view,
-          workspace,
-          chat: mobileCloudChatForWorkspace(workspace, view),
-        }];
-      });
-    const groups = groupByMobileWorkRecency(items, (item) => item.view.lastActivityMs).map(
-      (group) => ({ view: { id: group.id, label: group.label }, items: group.items }),
-    );
-    const recentItems = [...items]
-      .sort((left, right) => right.view.lastActivityMs - left.view.lastActivityMs)
-      .slice(0, 5);
-    const attentionCount = deriveMobileWorkAttentionCount(items.map((item) => item.view));
-    return { groups, items, recentItems, attentionCount };
-  }, [data, filters]);
+  const inventory = useMemo(
+    () => buildMobileWorkInventory(data, filters),
+    [data, filters],
+  );
 
   return {
     ...inventory,
