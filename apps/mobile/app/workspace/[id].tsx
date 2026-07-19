@@ -1,7 +1,7 @@
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { MobileChatScreen } from "../../src/components/chat/MobileChatScreen";
+import { MobileWorkspaceShell } from "../../src/components/workspace/MobileWorkspaceShell";
 import type { MobileCloudChat } from "../../src/lib/domain/workspace/mobile-workspace-chat";
 import { useMobileAuth } from "../../src/providers/MobileAuthProvider";
 import { colors } from "../../src/styles/tokens";
@@ -62,7 +62,7 @@ export default function WorkspaceRoute() {
       style={{ flex: 1, backgroundColor: colors.background }}
       edges={["right", "bottom", "left"]}
     >
-      <MobileChatScreen
+      <MobileWorkspaceShell
         chat={chat}
         ownerUserId={user?.id ?? null}
         productToken={accessToken}

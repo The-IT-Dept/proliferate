@@ -8,7 +8,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Stack } from "expo-router";
-import { ContextCapsule } from "@proliferate/design/glass";
 import {
   DEFAULT_DIRECT_PROMPT_AGENT_KIND,
   DEFAULT_DIRECT_PROMPT_MODEL_ID,
@@ -31,8 +30,6 @@ import type {
 } from "../../lib/domain/workspace/mobile-workspace-chat";
 import type { OptimisticPrompt } from "../../lib/domain/chat/mobile-chat-transcript";
 import {
-  contextCapsuleStatusFromMobileStatus,
-  mobileStatus,
   summarizeRuntimeContext,
 } from "../../lib/domain/chat/mobile-chat-presentation";
 import {
@@ -40,7 +37,7 @@ import {
   isPromptProgressStatus,
   loadingStatusText,
 } from "../../lib/domain/chat/mobile-chat-row-presentation";
-import { colors, radius, spacing } from "../../styles/tokens";
+import { colors } from "../../styles/tokens";
 import { MobileChatClaimBanner } from "./screen/MobileChatClaimBanner";
 import { MobileChatComposer } from "./screen/MobileChatComposer";
 import { MobileChatHeaderActions } from "./screen/MobileChatHeaderActions";
@@ -53,6 +50,20 @@ interface MobileChatScreenProps {
   productToken: string | null;
   onInitialPendingPromptConsumed?: () => void;
   onSessionSelected?: (sessionId: string) => void;
+  /**
+   * Group D: when mounted inside the workspace shell, the shell owns the
+   * top offset (native header + context capsule + segmented control) and
+   * passes it here so the transcript clears the floating chrome. Standalone
+   * (no shell) it falls back to the internal compact-header height.
+   */
+  topInset?: number;
+  /**
+   * Group D: whether the Chat segment is the active shell segment. When the
+   * shell shows another segment it keeps Chat mounted (preserving transcript
+   * + dispatch state) but hidden and inactive, so Chat yields the native
+   * header options to the shell instead of setting its own.
+   */
+  active?: boolean;
 }
 
 export function MobileChatScreen({
@@ -61,6 +72,8 @@ export function MobileChatScreen({
   productToken,
   onInitialPendingPromptConsumed,
   onSessionSelected,
+  topInset,
+  active = true,
 }: MobileChatScreenProps) {
   const keyboardInset = useVisualViewportKeyboardInset();
   const insets = useSafeAreaInsets();
@@ -254,9 +267,6 @@ export function MobileChatScreen({
   const title = newSessionMode
     ? "New session"
     : session?.title ?? workspace?.displayName ?? chat.title;
-  const subtitle = workspace?.repo
-    ? `${workspace.repo.owner}/${workspace.repo.name}`
-    : chat.repoLabel;
   const branchLabel = workspace?.repo?.branch ?? workspace?.repo?.baseBranch ?? chat.branchLabel;
   const commandMessage =
     pendingPromptStatus ??
@@ -287,7 +297,7 @@ export function MobileChatScreen({
         : "Waiting for workspace";
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: headerHeight }]}
+      style={[styles.root, { paddingTop: topInset ?? headerHeight }]}
       behavior={Platform.select({ ios: "padding", default: undefined })}
       keyboardVerticalOffset={0}
     >
@@ -295,36 +305,27 @@ export function MobileChatScreen({
         Native header (compact, not large-title - see the workspace/[id]
         Stack.Screen options in app/_layout.tsx for the glass setup). Actions
         that used to live in the custom MobileChatHeader's trailing slot move
-        into headerRight; the back button is the native default (no headerLeft
-        override needed - it already pops the stack the same way `onBack` used
-        to). `subtitle` (owner/repo) has no native header slot to live in, so
-        it renders below as the IA's "context capsule" instead (repo · branch
-        · status, design-system.md §3.2) - see the ContextCapsule row below.
+        into headerRight; the back button is the native default. Group D: the
+        context capsule (repo · branch · status) moved UP to the workspace
+        shell so it shows across every segment; this screen no longer renders
+        it. The `<Stack.Screen>` is gated on `active` so that when the shell
+        shows another segment (Sessions/Term/Diff) the shell owns the header
+        title instead of this (still-mounted) Chat screen.
       */}
-      <Stack.Screen
-        options={{
-          title,
-          headerRight: () => (
-            <MobileChatHeaderActions
-              sessionsCount={sessions.length}
-              unclaimed={isUnclaimed}
-              onOpenSessions={() => openWorkspaceActionSheet("sessions")}
-              onOpenActions={() => openWorkspaceActionSheet()}
-            />
-          ),
-        }}
-      />
-
-      {subtitle ? (
-        <View style={styles.contextCapsuleRow}>
-          <View style={styles.contextCapsulePill}>
-            <ContextCapsule
-              repo={subtitle}
-              branch={branchLabel}
-              status={contextCapsuleStatusFromMobileStatus(mobileStatus(session?.status ?? workspaceStatus))}
-            />
-          </View>
-        </View>
+      {active ? (
+        <Stack.Screen
+          options={{
+            title,
+            headerRight: () => (
+              <MobileChatHeaderActions
+                sessionsCount={sessions.length}
+                unclaimed={isUnclaimed}
+                onOpenSessions={() => openWorkspaceActionSheet("sessions")}
+                onOpenActions={() => openWorkspaceActionSheet()}
+              />
+            ),
+          }}
+        />
       ) : null}
 
       {isUnclaimed ? (
@@ -402,16 +403,5 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  contextCapsuleRow: {
-    alignItems: "center",
-    paddingTop: spacing[2],
-    paddingBottom: spacing[1],
-  },
-  contextCapsulePill: {
-    backgroundColor: colors.accent,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radius.full,
   },
 });
