@@ -234,7 +234,15 @@ export function MobileWorkspaceDiffSegment({ topInset }: MobileWorkspaceDiffSegm
       {publishDockVisible ? (
         <MobilePublishDock
           label={publish.view.primaryLabel}
-          disabled={!publish.view.viewsExistingPrOnly && !!publish.view.disabledReason}
+          // The dock is an OPENER for `MobilePublishSheet`, not the submit
+          // action — the commit-message input (and thus the only way to
+          // clear a blank-message `disabledReason`) lives inside the sheet,
+          // so gating the opener on `disabledReason` would strand the
+          // primary path (dirty changes, blank message) with a dock that
+          // can never be tapped. Only `isSubmitting` blocks re-opening
+          // mid-publish; the sheet's own primary button still gates on
+          // `disabledReason` via `primaryDisabled` (`MobilePublishSheet`).
+          disabled={publish.isSubmitting}
           submitting={publish.isSubmitting}
           bottomInset={insets.bottom + spacing[3]}
           onPress={() => setPublishSheetOpen(true)}
