@@ -10,6 +10,7 @@ import { resolveSessionSidebarActivityState } from "@proliferate/product-domain/
 import { MobileChatScreen } from "../chat/MobileChatScreen";
 import { MobileWorkspaceSegmentedControl } from "./MobileWorkspaceSegmentedControl";
 import { MobileWorkspaceSessions } from "./MobileWorkspaceSessions";
+import { MobileWorkspaceTerminalSegment } from "./MobileWorkspaceTerminalSegment";
 import { MobileWorkspaceSegmentPlaceholder } from "./MobileWorkspaceSegmentPlaceholder";
 import type { MobileCloudChat } from "../../lib/domain/workspace/mobile-workspace-chat";
 import {
@@ -50,7 +51,10 @@ const CHROME_HEIGHT_ESTIMATE = 110;
  * Chat stays mounted across segment switches (preserving its transcript +
  * dispatch state) but hidden + inactive when another segment is showing, so it
  * yields the native header to the shell. Sessions is the real Group D surface;
- * Term (Group F) and Diff (Group G) are honest "coming" placeholders.
+ * Term is the Group F spike's minimal one-terminal attach (unlike Chat, its
+ * body is only rendered while active — connectTerminal connects on mount and
+ * closes on unmount, no warm-in-background pause); Diff (Group G) is still an
+ * honest "coming" placeholder.
  */
 export function MobileWorkspaceShell({
   chat,
@@ -137,12 +141,7 @@ export function MobileWorkspaceShell({
 
       {segment === "term" ? (
         <View style={StyleSheet.absoluteFill}>
-          <MobileWorkspaceSegmentPlaceholder
-            icon="terminal"
-            title="Terminal"
-            body="Attach to a workspace terminal — stream I/O and resize, right from your phone. Landing in an upcoming update."
-            topInset={bodyTopInset}
-          />
+          <MobileWorkspaceTerminalSegment topInset={bodyTopInset} />
         </View>
       ) : null}
 
