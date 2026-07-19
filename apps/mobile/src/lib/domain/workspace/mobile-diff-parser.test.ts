@@ -145,4 +145,103 @@ describe("parseUnifiedDiff", () => {
     expect(parsed.hunks[0]!.oldStart).toBe(1);
     expect(parsed.hunks[0]!.newStart).toBe(1);
   });
+
+  // Edge case: a `\ No newline at end of file` marker line. It carries no
+  // +/-/space prefix, so it falls through `classifyRawLine`'s default branch
+  // like web's `classifyLine` does — treated (and counted) as a context
+  // line. Documenting current behavior, not changing it (see M3).
+  it("treats a `\\ No newline at end of file` marker as a context line, matching web", () => {
+    const parsed = parseUnifiedDiff(
+      ["@@ -1,2 +1,2 @@", "-old", "+new", "\\ No newline at end of file"].join("\n"),
+    );
+
+    expect(parsed.hunks).toHaveLength(1);
+    expect(parsed.hunks[0]!.lines).toEqual([
+      { kind: "del", content: "old", oldLineNo: 1, newLineNo: null },
+      { kind: "add", content: "new", oldLineNo: null, newLineNo: 1 },
+      { kind: "context", content: "\\ No newline at end of file", oldLineNo: 2, newLineNo: 2 },
+    ]);
+  });
+
+  // Edge case: a binary-file diff. `classifyRawLine` has no dedicated
+  // "Binary files ... differ" case (web's `classifyLine` doesn't either), so
+  // it falls through to the context branch inside an implicit hunk — the
+  // point of this test is that it doesn't throw and yields a well-formed
+  // (non-crashing) hunk set, not that the content is semantically diff text.
+  // Real binary diffs never reach this parser in the app — the segment
+  // checks `GitDiffResponse.binary` first — this is a defensive/robustness
+  // test of the pure function in isolation.
+  it("does not crash on a binary-file diff and produces a sensible hunk set", () => {
+    const parsed = parseUnifiedDiff(
+      [
+        "diff --git a/x.png b/x.png",
+        "index 1111111..2222222 100644",
+        "Binary files a/x.png and b/x.png differ",
+      ].join("\n"),
+    );
+
+    expect(parsed.hunks).toHaveLength(1);
+    expect(parsed.hunks[0]!.lines).toEqual([
+      {
+        kind: "context",
+        content: "Binary files a/x.png and b/x.png differ",
+        oldLineNo: 1,
+        newLineNo: 1,
+      },
+    ]);
+  });
+
+  // Edge case: an added-file diff (`--- /dev/null`). Real patches from
+  // anyharness include a `new file mode` line (see
+  // anyharness/crates/.../service_tests.rs) that predates the `@@` header
+  // and, like "Binary files" above, isn't in `classifyRawLine`'s meta list
+  // (neither is web's) — so it lands as a stray context line in an implicit
+  // hunk ahead of the real one. Documenting that shared-with-web quirk here
+  // and asserting what actually matters: the real hunk's line-number
+  // tracking is correct on the present (new-file) side.
+  it("tracks new-file line numbers on the present side of an added-file diff", () => {
+    const parsed = parseUnifiedDiff(
+      [
+        "diff --git a/brand-new.txt b/brand-new.txt",
+        "new file mode 100644",
+        "--- /dev/null",
+        "+++ b/brand-new.txt",
+        "@@ -0,0 +1,2 @@",
+        "+alpha",
+        "+beta",
+      ].join("\n"),
+    );
+
+    const realHunk = parsed.hunks.at(-1)!;
+    expect(realHunk.oldStart).toBe(0);
+    expect(realHunk.newStart).toBe(1);
+    expect(realHunk.lines).toEqual([
+      { kind: "add", content: "alpha", oldLineNo: null, newLineNo: 1 },
+      { kind: "add", content: "beta", oldLineNo: null, newLineNo: 2 },
+    ]);
+  });
+
+  // Edge case: a deleted-file diff (`+++ /dev/null`) — line-number tracking
+  // on the present (old-file) side.
+  it("tracks old-file line numbers on the present side of a deleted-file diff", () => {
+    const parsed = parseUnifiedDiff(
+      [
+        "diff --git a/gone.txt b/gone.txt",
+        "deleted file mode 100644",
+        "--- a/gone.txt",
+        "+++ /dev/null",
+        "@@ -1,2 +0,0 @@",
+        "-alpha",
+        "-beta",
+      ].join("\n"),
+    );
+
+    const realHunk = parsed.hunks.at(-1)!;
+    expect(realHunk.oldStart).toBe(1);
+    expect(realHunk.newStart).toBe(0);
+    expect(realHunk.lines).toEqual([
+      { kind: "del", content: "alpha", oldLineNo: 1, newLineNo: null },
+      { kind: "del", content: "beta", oldLineNo: 2, newLineNo: null },
+    ]);
+  });
 });
