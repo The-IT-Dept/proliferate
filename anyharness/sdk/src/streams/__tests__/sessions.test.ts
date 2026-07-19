@@ -205,6 +205,34 @@ describe("streamSession", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("uses the injected fetchImpl instead of globalThis.fetch when provided", async () => {
+    const globalFetch = vi.fn() as unknown as typeof fetch;
+    globalThis.fetch = globalFetch;
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+
+    await new Promise<void>((resolve, reject) => {
+      streamSession({
+        baseUrl: "http://runtime.test",
+        sessionId: "s1",
+        fetchImpl,
+        onEvent: () => undefined,
+        onClose: resolve,
+        onError: reject,
+      });
+    });
+
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
   it("emits sanitized stream timing events", async () => {
     const timingEvents: AnyHarnessTimingEvent[] = [];
     setAnyHarnessTimingObserver((event) => timingEvents.push(event));

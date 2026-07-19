@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { fetch as expoFetch } from "expo/fetch";
 import {
   streamSession,
   type SessionEventEnvelope,
@@ -10,7 +11,6 @@ import {
   useAnyHarnessWorkspaceContext,
 } from "@anyharness/sdk-react";
 
-import { callWithStreamingFetch } from "../../../lib/access/anyharness/native-streaming-fetch";
 import {
   applyStreamEnvelope,
   createSessionTranscriptStreamState,
@@ -134,46 +134,45 @@ class SessionTranscriptStreamController {
         if (generation !== this.generation || !this.active) {
           return;
         }
-        this.handle = callWithStreamingFetch(() =>
-          streamSession({
-            baseUrl: connection.baseUrl,
-            sessionId: this.sessionId,
-            authToken: connection.authToken,
-            headers: connection.headers,
-            afterSeq: this.state.lastSeq > 0 ? this.state.lastSeq : undefined,
-            onOpen: () => {
-              if (generation !== this.generation) return;
-              this.connectionState = "open";
-              this.hasSynced = true;
-              this.publish();
-            },
-            onEvent: (envelope) => {
-              if (generation !== this.generation) return;
-              const next = applyStreamEnvelope(this.state, envelope);
-              if (next === this.state) return;
-              this.state = next;
-              this.publish();
-            },
-            onError: (error) => {
-              if (generation !== this.generation) return;
-              this.error = error;
-              this.connectionState = "error";
+        this.handle = streamSession({
+          baseUrl: connection.baseUrl,
+          sessionId: this.sessionId,
+          authToken: connection.authToken,
+          headers: connection.headers,
+          afterSeq: this.state.lastSeq > 0 ? this.state.lastSeq : undefined,
+          fetchImpl: expoFetch as unknown as typeof fetch,
+          onOpen: () => {
+            if (generation !== this.generation) return;
+            this.connectionState = "open";
+            this.hasSynced = true;
+            this.publish();
+          },
+          onEvent: (envelope) => {
+            if (generation !== this.generation) return;
+            const next = applyStreamEnvelope(this.state, envelope);
+            if (next === this.state) return;
+            this.state = next;
+            this.publish();
+          },
+          onError: (error) => {
+            if (generation !== this.generation) return;
+            this.error = error;
+            this.connectionState = "error";
+            this.publish();
+            this.scheduleReconnect(resolveConnection, generation);
+          },
+          onClose: () => {
+            if (generation !== this.generation) return;
+            if (this.active) {
+              this.connectionState = "reconnecting";
               this.publish();
               this.scheduleReconnect(resolveConnection, generation);
-            },
-            onClose: () => {
-              if (generation !== this.generation) return;
-              if (this.active) {
-                this.connectionState = "reconnecting";
-                this.publish();
-                this.scheduleReconnect(resolveConnection, generation);
-              } else {
-                this.connectionState = "closed";
-                this.publish();
-              }
-            },
-          })
-        );
+            } else {
+              this.connectionState = "closed";
+              this.publish();
+            }
+          },
+        });
       })
       .catch((error: unknown) => {
         if (generation !== this.generation) return;

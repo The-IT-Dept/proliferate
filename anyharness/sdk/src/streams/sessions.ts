@@ -23,6 +23,14 @@ export interface SessionStreamOptions {
     measurementOperationId?: AnyHarnessMeasurementOperationId;
     runtimeUrlHash?: string;
   };
+  /**
+   * Overrides the `fetch` implementation used for the streaming request.
+   * Defaults to `globalThis.fetch`. Callers whose platform `fetch` doesn't
+   * stream a response body (e.g. React Native) can inject a streaming-capable
+   * implementation here instead of swapping `globalThis.fetch` for the
+   * duration of the call.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 export interface SessionStreamHandle {
@@ -80,7 +88,8 @@ export function streamSession(options: SessionStreamOptions): SessionStreamHandl
         headers.set("authorization", `Bearer ${options.authToken}`);
       }
 
-      const response = await fetch(url, {
+      const doFetch = options.fetchImpl ?? globalThis.fetch;
+      const response = await doFetch(url, {
         method: "GET",
         headers,
         signal: controller.signal,
