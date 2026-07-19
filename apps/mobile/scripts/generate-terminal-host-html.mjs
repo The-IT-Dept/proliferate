@@ -35,6 +35,29 @@ const xtermJs = readFileSync(resolve(xtermPkgDir, "lib/xterm.js"), "utf8");
 const xtermCss = readFileSync(resolve(xtermPkgDir, "css/xterm.css"), "utf8");
 const fitAddonJs = readFileSync(resolve(fitPkgDir, "lib/addon-fit.js"), "utf8");
 
+// These three assets get inlined verbatim into a literal `<script>`/`<style>`
+// element below with no escaping (see `html` further down) — a future
+// xterm/addon-fit release that happens to contain a literal `</script` or
+// `</style` sequence (e.g. inside a string literal or a comment) would
+// prematurely close that element and silently truncate/corrupt the
+// generated host page. Fail loudly here instead of producing a broken
+// `terminal-host-html.generated.ts` that only shows up as a mysteriously
+// blank terminal at runtime.
+function assertInlineSafe(label, content) {
+  if (/<\/(script|style)/i.test(content)) {
+    throw new Error(
+      `${label} contains a literal "</script" or "</style" sequence and can't be inlined ` +
+        "verbatim into the terminal host page's <script>/<style> element as-is. " +
+        "Refusing to regenerate terminal-host-html.generated.ts — see the comment above " +
+        "this check in scripts/generate-terminal-host-html.mjs.",
+    );
+  }
+}
+
+assertInlineSafe("@xterm/xterm's lib/xterm.js", xtermJs);
+assertInlineSafe("@xterm/xterm's css/xterm.css", xtermCss);
+assertInlineSafe("@xterm/addon-fit's lib/addon-fit.js", fitAddonJs);
+
 // The bridge glue: instantiates xterm + FitAddon against the UMD globals the
 // two inlined bundles attach (`window.Terminal`, `window.FitAddon.FitAddon`),
 // and implements both halves of the postMessage contract in
