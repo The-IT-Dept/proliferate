@@ -23,7 +23,7 @@ export interface MobileBillingPlanSummary {
 }
 
 export function mobileSectionLabels(): Record<
-  "account" | "personalSecrets" | "environments" | "organization" | "billing",
+  "account" | "personalSecrets" | "environments" | "organization" | "organizationSecrets" | "billing",
   string
 > {
   const labels = new Map(
@@ -34,6 +34,7 @@ export function mobileSectionLabels(): Record<
     personalSecrets: labels.get("personal-secrets") ?? "Personal secrets",
     environments: labels.get("environments") ?? "Environments",
     organization: labels.get("organization") ?? "Organization",
+    organizationSecrets: labels.get("organization-secrets") ?? "Organization secrets",
     billing: labels.get("billing") ?? "Billing",
   };
 }
@@ -139,10 +140,15 @@ export function mobileGoogleAccountLabel(
 }
 
 /**
- * View-only summary for the Settings > Personal secrets row — counts only,
- * no names/values (this is a view surface, not the secrets editor).
+ * View-only summary for a Settings secrets row (Personal or Organization) —
+ * counts only, no names/values (this is a view surface, not the secrets
+ * editor). Scope-agnostic: `CloudSecretsResponse`'s shape (envVars/files
+ * counts) is identical for `{kind:"personal"}` and
+ * `{kind:"organization",...}` (see `useCloudSecrets` in
+ * `@proliferate/cloud-sdk-react`), so both the Personal secrets and
+ * Organization secrets rows share this one formatter.
  */
-export function mobilePersonalSecretsSummary(
+export function mobileCloudSecretsSummary(
   secrets: CloudSecretsResponse | null | undefined,
   loading: boolean,
   failed: boolean,

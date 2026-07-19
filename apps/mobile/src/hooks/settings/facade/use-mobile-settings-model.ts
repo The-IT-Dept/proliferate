@@ -15,6 +15,18 @@ export function useMobileSettingsModel(account: MobileSettingsAccountSummary) {
   const billing = useCloudBilling({ ownerScope: "personal" });
   const repoConfigs = useRepositories();
   const personalSecrets = useCloudSecrets({ kind: "personal" });
+  // Mobile has no org-switcher/active-organization store the way web's
+  // settings does (`useActiveOrganization`); it defaults to the same first
+  // organization the Organization section below already lists, sourced from
+  // the `organizations` query already fetched above — no separate org-id
+  // lookup. Any member (not just admins) can read organization secrets
+  // (server: `_require_organization_member`, not `_require_organization_admin`
+  // — only the write endpoints require admin), so this view-only counts row
+  // needs no admin check.
+  const activeOrganizationId = organizations.data?.organizations[0]?.id ?? null;
+  const organizationSecrets = useCloudSecrets(
+    activeOrganizationId ? { kind: "organization", organizationId: activeOrganizationId } : null,
+  );
 
   const displayName =
     viewer.data?.user.display_name?.trim()
@@ -77,6 +89,7 @@ export function useMobileSettingsModel(account: MobileSettingsAccountSummary) {
     passwordEnabled,
     passwordStateLabel,
     personalSecrets,
+    organizationSecrets,
     repoConfigs,
     viewer,
   };

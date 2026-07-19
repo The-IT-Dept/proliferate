@@ -14,8 +14,8 @@ import {
   billingPlanTitle,
   billingUsageLine,
   initialsForMobileSettingsName,
+  mobileCloudSecretsSummary,
   mobileGoogleAccountLabel,
-  mobilePersonalSecretsSummary,
   mobileSectionLabels,
   type MobileSettingsAccountSummary,
 } from "../../lib/domain/settings/mobile-settings-presentation";
@@ -109,6 +109,20 @@ export function MobileSettingsScreen({ account, onSignOut, onOpenAgents }: Mobil
         />
       </MobileSettingsSection>
 
+      <MobileSettingsSection label={sectionLabels.personalSecrets}>
+        <MobileSettingsRow
+          icon="lock"
+          title="Personal secrets"
+          subtitle="Env vars and files available to your cloud sandboxes"
+          value={mobileCloudSecretsSummary(
+            settingsModel.personalSecrets.data,
+            settingsModel.personalSecrets.isLoading,
+            settingsModel.personalSecrets.isError,
+          )}
+          valueTone="muted"
+        />
+      </MobileSettingsSection>
+
       <MobileSettingsSection label={sectionLabels.environments}>
         {settingsModel.configuredRepos.length === 0 && !settingsModel.repoConfigs.isLoading ? (
           <MobileSettingsRow icon="git-branch" title="No repositories yet" subtitle="Add one to launch mobile chats" />
@@ -134,20 +148,6 @@ export function MobileSettingsScreen({ account, onSignOut, onOpenAgents }: Mobil
         />
       </MobileSettingsSection>
 
-      <MobileSettingsSection label={sectionLabels.personalSecrets}>
-        <MobileSettingsRow
-          icon="lock"
-          title="Personal secrets"
-          subtitle="Env vars and files available to your cloud sandboxes"
-          value={mobilePersonalSecretsSummary(
-            settingsModel.personalSecrets.data,
-            settingsModel.personalSecrets.isLoading,
-            settingsModel.personalSecrets.isError,
-          )}
-          valueTone="muted"
-        />
-      </MobileSettingsSection>
-
       <MobileSettingsSection label={sectionLabels.organization}>
         {settingsModel.organizations.isError ? (
           <MobileSettingsRow icon="users" title="Teams" value="Error" valueTone="warning" />
@@ -167,6 +167,22 @@ export function MobileSettingsScreen({ account, onSignOut, onOpenAgents }: Mobil
           ))
         )}
       </MobileSettingsSection>
+
+      {settingsModel.organizationRows.length > 0 ? (
+        <MobileSettingsSection label={sectionLabels.organizationSecrets}>
+          <MobileSettingsRow
+            icon="lock"
+            title="Organization secrets"
+            subtitle="Env vars and files available in every member's cloud sandbox"
+            value={mobileCloudSecretsSummary(
+              settingsModel.organizationSecrets.data,
+              settingsModel.organizationSecrets.isLoading,
+              settingsModel.organizationSecrets.isError,
+            )}
+            valueTone="muted"
+          />
+        </MobileSettingsSection>
+      ) : null}
 
       <MobileSettingsSection label={sectionLabels.billing}>
         <MobileSettingsRow

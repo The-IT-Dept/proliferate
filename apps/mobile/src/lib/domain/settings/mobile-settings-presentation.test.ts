@@ -4,7 +4,7 @@ import type { CloudSecretsResponse } from "@proliferate/cloud-sdk";
 
 import {
   mobileGoogleAccountLabel,
-  mobilePersonalSecretsSummary,
+  mobileCloudSecretsSummary,
 } from "./mobile-settings-presentation";
 
 function linked(overrides: Partial<AuthLinkedProvider> = {}): AuthLinkedProvider {
@@ -77,22 +77,22 @@ function secrets(overrides: Partial<CloudSecretsResponse> = {}): CloudSecretsRes
   };
 }
 
-describe("mobilePersonalSecretsSummary", () => {
+describe("mobileCloudSecretsSummary", () => {
   it("is 'Loading' while the query is in flight and there's no cached data yet", () => {
-    expect(mobilePersonalSecretsSummary(undefined, true, false)).toBe("Loading");
+    expect(mobileCloudSecretsSummary(undefined, true, false)).toBe("Loading");
   });
 
   it("is 'Could not load secrets' on failure", () => {
-    expect(mobilePersonalSecretsSummary(undefined, false, true)).toBe("Could not load secrets");
+    expect(mobileCloudSecretsSummary(undefined, false, true)).toBe("Could not load secrets");
   });
 
   it("is 'No secrets configured' when both envVars and files are empty", () => {
-    expect(mobilePersonalSecretsSummary(secrets(), false, false)).toBe("No secrets configured");
+    expect(mobileCloudSecretsSummary(secrets(), false, false)).toBe("No secrets configured");
   });
 
   it("singularizes a count of exactly one", () => {
     expect(
-      mobilePersonalSecretsSummary(
+      mobileCloudSecretsSummary(
         secrets({ envVars: [{ id: "1", name: "API_KEY", byteSize: 10, updatedAt: "now" }] }),
         false,
         false,
@@ -102,7 +102,7 @@ describe("mobilePersonalSecretsSummary", () => {
 
   it("pluralizes counts and joins env vars + files", () => {
     expect(
-      mobilePersonalSecretsSummary(
+      mobileCloudSecretsSummary(
         secrets({
           envVars: [
             { id: "1", name: "API_KEY", byteSize: 10, updatedAt: "now" },
