@@ -4,6 +4,7 @@ import { StyleSheet, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { MobileSettingsScreen } from "../../../src/components/settings/MobileSettingsScreen";
+import { useMobileGithubAppCallbackRefresh } from "../../../src/hooks/settings/lifecycle/use-mobile-github-app-callback-refresh";
 import { buildMobileAccountSummary } from "../../../src/lib/domain/settings/mobile-account-summary";
 import { useMobileAuth } from "../../../src/providers/MobileAuthProvider";
 import { colors, spacing } from "../../../src/styles/tokens";
@@ -11,6 +12,9 @@ import { colors, spacing } from "../../../src/styles/tokens";
 export default function SettingsTabRoute() {
   const { user, signOut } = useMobileAuth();
   const account = useMemo(() => buildMobileAccountSummary(user), [user]);
+  // Handles the GitHub App callback redirect from app/+native-intent.ts
+  // (?source=github_app_callback) - see that hook's doc comment.
+  useMobileGithubAppCallbackRefresh();
 
   return (
     <SafeAreaView

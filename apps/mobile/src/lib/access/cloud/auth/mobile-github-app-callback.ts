@@ -11,7 +11,7 @@
  * No React, no platform APIs — unit-tested directly.
  */
 
-const GITHUB_APP_CALLBACK_SOURCE = "github_app_callback";
+export const GITHUB_APP_CALLBACK_SOURCE = "github_app_callback";
 
 export function isMobileGitHubAppCallbackUrl(url: string | null): boolean {
   if (!url) {

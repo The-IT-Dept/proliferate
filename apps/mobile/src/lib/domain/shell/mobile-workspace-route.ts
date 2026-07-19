@@ -18,6 +18,29 @@ export function mobileWorkspaceHref(
   workspaceId: string,
   options?: { sessionId?: string | null; requestId?: string | null },
 ): Href {
+  return { pathname: "/workspace/[id]", params: mobileWorkspaceRouteParams(workspaceId, options) };
+}
+
+/**
+ * String-path form of `mobileWorkspaceHref`, for the one context with no
+ * router instance available to resolve an `Href` through: `app/
+ * +native-intent.ts`'s `redirectSystemPath`, which runs before the
+ * router/providers mount and must return a plain path string. Shares
+ * `mobileWorkspaceRouteParams` so the two never drift on param names.
+ */
+export function mobileWorkspacePath(
+  workspaceId: string,
+  options?: { sessionId?: string | null; requestId?: string | null },
+): string {
+  const { id, ...query } = mobileWorkspaceRouteParams(workspaceId, options);
+  const search = new URLSearchParams(query).toString();
+  return `/workspace/${encodeURIComponent(id)}${search ? `?${search}` : ""}`;
+}
+
+function mobileWorkspaceRouteParams(
+  workspaceId: string,
+  options?: { sessionId?: string | null; requestId?: string | null },
+): Record<string, string> {
   const params: Record<string, string> = { id: workspaceId };
   if (options?.sessionId) {
     params.sessionId = options.sessionId;
@@ -25,5 +48,5 @@ export function mobileWorkspaceHref(
   if (options?.requestId) {
     params.interaction = options.requestId;
   }
-  return { pathname: "/workspace/[id]", params };
+  return params;
 }
