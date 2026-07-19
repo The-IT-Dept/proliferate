@@ -22,7 +22,7 @@ describe("isMobileGitHubAppCallbackUrl", () => {
   it("matches an https callback with the source param", () => {
     expect(
       isMobileGitHubAppCallbackUrl(
-        "https://app.proliferate.ai/settings/environments?source=github_app_callback",
+        "https://proliferate.theitdept.au/settings/environments?source=github_app_callback",
       ),
     ).toBe(true);
   });
@@ -33,7 +33,7 @@ describe("isMobileGitHubAppCallbackUrl", () => {
 
   it("does not match a workspace deep link", () => {
     expect(
-      isMobileGitHubAppCallbackUrl("https://app.proliferate.ai/workspaces/ws_123"),
+      isMobileGitHubAppCallbackUrl("https://proliferate.theitdept.au/workspaces/ws_123"),
     ).toBe(false);
   });
 
