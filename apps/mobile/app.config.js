@@ -41,16 +41,24 @@ module.exports = ({ config }) => ({
       // it here (rather than passed through the plugin config below) makes
       // it visible/greppable next to the rest of the ios block.
       //
-      // "development" matches the Development-signed dev-client build this
-      // feature needs first (`eas build --profile development` /
-      // `development-simulator` - both set `developmentClient: true`, which
-      // EAS signs with a Development provisioning profile). This MUST
-      // change to "production" (or be branched per EAS build profile, the
-      // way `IS_STAGING` branches bundle id) before a `production` /
-      // `staging` / `staging-testflight` (App Store/TestFlight) submission
-      // build: those sign with a Distribution profile, which requires the
+      // Distribution-signed builds (Ad Hoc/App Store) require the
       // "production" APNs environment - Apple rejects a mismatched value.
-      "aps-environment": "development",
+      // `staging`/`staging-testflight` (eas.json) both set
+      // APP_VARIANT=staging and are Distribution-signed, so they're
+      // branched to "production" the same way `IS_STAGING` branches the
+      // bundle id above. A hypothetical distinct APP_VARIANT="production"
+      // value is mapped the same way in case one's introduced later.
+      //
+      // Everything else (unset APP_VARIANT) stays "development" - correct
+      // for the Development-signed `development`/`development-simulator`
+      // dev-client build this feature needs first (both set
+      // `developmentClient: true` in eas.json). NOTE: today's
+      // unset-APP_VARIANT `production`/`preview` eas.json profiles are also
+      // Distribution-signed and land in this same bucket, so they still
+      // resolve to "development" here - closing that needs eas.json to set
+      // an explicit APP_VARIANT for them too, which is a follow-up outside
+      // this fix.
+      "aps-environment": IS_STAGING || process.env.APP_VARIANT === "production" ? "production" : "development",
     },
   },
   android: {
