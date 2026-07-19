@@ -116,4 +116,33 @@ describe("parseUnifiedDiff", () => {
     const added = parsed.hunks[0]!.lines.filter((line) => line.kind === "add");
     expect(added.map((line) => line.newLineNo)).toEqual([2, 3, 4]);
   });
+
+  // M2 — CRLF-robust hunk header.
+  it("parses ranges and the section heading from a CRLF-terminated hunk header", () => {
+    const parsed = parseUnifiedDiff(
+      ["@@ -41,4 +41,5 @@ handleRefundEvent\r", " context before", "-removed", "+added"].join("\n"),
+    );
+
+    expect(parsed.hunks).toHaveLength(1);
+    const hunk = parsed.hunks[0]!;
+    expect(hunk.sectionHeading).toBe("handleRefundEvent");
+    expect(hunk.oldStart).toBe(41);
+    expect(hunk.oldLines).toBe(4);
+    expect(hunk.newStart).toBe(41);
+    expect(hunk.newLines).toBe(5);
+    expect(hunk.lines).toEqual([
+      { kind: "context", content: "context before", oldLineNo: 41, newLineNo: 41 },
+      { kind: "del", content: "removed", oldLineNo: 42, newLineNo: null },
+      { kind: "add", content: "added", oldLineNo: null, newLineNo: 42 },
+    ]);
+  });
+
+  it("parses ranges from a CRLF-terminated hunk header with no section heading", () => {
+    const parsed = parseUnifiedDiff(["@@ -1,2 +1,2 @@\r", " a", " b"].join("\n"));
+
+    expect(parsed.hunks).toHaveLength(1);
+    expect(parsed.hunks[0]!.sectionHeading).toBe("");
+    expect(parsed.hunks[0]!.oldStart).toBe(1);
+    expect(parsed.hunks[0]!.newStart).toBe(1);
+  });
 });

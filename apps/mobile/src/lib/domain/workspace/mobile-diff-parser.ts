@@ -41,7 +41,14 @@ export interface ParsedDiff {
   hunks: DiffHunk[];
 }
 
-const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@\s*(.*)$/;
+// No trailing `$` anchor — mirrors web's `HUNK_RANGE_RE`
+// (`product-client/src/lib/domain/files/diff-parser.ts`). A `$`-anchored
+// `.*$` fails to match a CRLF-terminated header line (e.g. `@@ ... @@ fn\r`):
+// `.` never consumes `\r`, so the trailing `\r` leaves the string short of
+// `$` and the whole match fails, dropping range/section tracking for that
+// hunk. Without the anchor, group 5 still stops at the `\r` (same result for
+// LF-only headers) but the match itself succeeds either way.
+const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@\s*(.*)/;
 
 type RawLineClass = "hunk" | "added" | "removed" | "context" | "meta";
 
