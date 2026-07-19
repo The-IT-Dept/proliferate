@@ -182,4 +182,63 @@ describe("reduceQueueMutation", () => {
   it("settling an already-idle state stays null", () => {
     expect(reduceQueueMutation(null, { type: "settled" })).toBeNull();
   });
+
+  // Fix B (E2 Important, reviewer finding): this reducer used to be dead
+  // code — 5 tests validated the no-op-while-in-flight lock on a function
+  // nothing called, while production (`use-mobile-pending-prompt-queue.ts`)
+  // relied entirely on caller-side `.has()` guards around an unconditional
+  // `map.set`. `startMutation` now routes through `reduceQueueMutation`
+  // directly, so this IS the lock: a second steer/reorder for a session
+  // with one already in flight returns the same state reference (the
+  // hook's `startMutation` reads that as "no-op, return null" and skips
+  // firing the mutation).
+  it("a second steer while one is already in flight is a no-op (same-kind lock contention)", () => {
+    const inFlight = reduceQueueMutation(null, { type: "steer_started", seq: 3 });
+    const second = reduceQueueMutation(inFlight, { type: "steer_started", seq: 7 });
+    expect(second).toBe(inFlight);
+    expect(second).toEqual({ kind: "steer", steeringSeq: 3, optimisticOrder: null });
+  });
+
+  it("a second reorder while one is already in flight is a no-op (same-kind lock contention)", () => {
+    const inFlight = reduceQueueMutation(null, {
+      type: "reorder_started",
+      order: ["seq:1", "seq:2"],
+    });
+    const second = reduceQueueMutation(inFlight, {
+      type: "reorder_started",
+      order: ["seq:2", "seq:1"],
+    });
+    expect(second).toBe(inFlight);
+    expect(second).toEqual({ kind: "reorder", steeringSeq: null, optimisticOrder: ["seq:1", "seq:2"] });
+  });
+});
+
+describe("reduceQueueMutation + applyOptimisticQueueOrder (Fix B: reorder rollback)", () => {
+  const liveRows = buildMobilePendingPromptQueueRows(
+    [entry(1, "a"), entry(2, "b"), entry(3, "c")],
+    null,
+  );
+
+  it("shows the optimistic order while a reorder is in flight, then rolls back to the live order once settled (as on a rejected mutation)", () => {
+    // Mirrors what `useMobilePendingPromptQueue` does with these two
+    // functions together: `rows = applyOptimisticQueueOrder(derived,
+    // activeMutation?.optimisticOrder ?? null)`.
+    const inFlight = reduceQueueMutation(null, {
+      type: "reorder_started",
+      order: ["seq:3", "seq:1", "seq:2"],
+    });
+    expect(inFlight).not.toBeNull();
+
+    const optimisticRows = applyOptimisticQueueOrder(liveRows, inFlight!.optimisticOrder);
+    expect(optimisticRows.map((row) => row.key)).toEqual(["seq:3", "seq:1", "seq:2"]);
+
+    // The mutation rejects — `settleMutation` clears the map entry, so the
+    // next render has no active mutation for this session.
+    const settled = reduceQueueMutation(inFlight, { type: "settled" });
+    expect(settled).toBeNull();
+
+    const rolledBackRows = applyOptimisticQueueOrder(liveRows, settled?.optimisticOrder ?? null);
+    expect(rolledBackRows.map((row) => row.key)).toEqual(["seq:1", "seq:2", "seq:3"]);
+    expect(rolledBackRows).toEqual(liveRows);
+  });
 });

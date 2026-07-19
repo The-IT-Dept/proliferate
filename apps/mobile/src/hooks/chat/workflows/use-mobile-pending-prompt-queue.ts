@@ -12,7 +12,9 @@ import {
   applyOptimisticQueueOrder,
   buildMobilePendingPromptQueueRows,
   computeReorderRequest,
+  reduceQueueMutation,
   runtimeReorderNeighbors,
+  type PendingPromptQueueMutationAction,
   type PendingPromptQueueMutationState,
 } from "../../../lib/domain/chat/mobile-chat-pending-prompt-queue";
 import { useMobileToast } from "../../../providers/MobileToastProvider";
@@ -99,10 +101,36 @@ export function useMobilePendingPromptQueue({
     return applyOptimisticQueueOrder(derived, activeMutation?.optimisticOrder ?? null);
   }, [entries, editingSeq, activeMutation]);
 
+  /**
+   * Fix B (E2 Important, reviewer finding): this used to unconditionally
+   * `map.set`, relying entirely on callers pre-checking
+   * `mutationsBySessionIdRef.current.has(sessionId)` before calling in —
+   * correct in practice, but nothing enforced it *here*, and the pure
+   * single-in-flight-lock logic (`reduceQueueMutation`) that was meant to
+   * back this lived untested as dead code (nothing called it). Routing
+   * through it makes `startMutation` self-enforcing — a second
+   * steer/reorder for a session with one already in flight is a no-op,
+   * returning `null` instead of clobbering the in-flight token — and makes
+   * `reduceQueueMutation`'s existing no-op-while-in-flight tests exercise
+   * real production behavior instead of a function nothing calls.
+   */
   const startMutation = useCallback(
-    (sessionKey: string, state: PendingPromptQueueMutationState): symbol => {
-      const token = Symbol(state.kind);
-      mutationsBySessionIdRef.current.set(sessionKey, { ...state, token });
+    (sessionKey: string, action: PendingPromptQueueMutationAction): symbol | null => {
+      const current = mutationsBySessionIdRef.current.get(sessionKey) ?? null;
+      const next = reduceQueueMutation(current, action);
+      if (next === current) {
+        // Reducer's `state ?? {...}` no-op branch: a mutation is already in
+        // flight for this session, so this start attempt is dropped.
+        return null;
+      }
+      if (!next) {
+        // Unreachable via the "*_started" actions this function is called
+        // with (only `settleMutation` sends "settled"), but stay defensive
+        // rather than assume the union can't grow.
+        return null;
+      }
+      const token = Symbol(next.kind);
+      mutationsBySessionIdRef.current.set(sessionKey, { ...next, token });
       setMutationRevision((revision) => revision + 1);
       return token;
     },
@@ -182,15 +210,17 @@ export function useMobilePendingPromptQueue({
 
   const onSteer = useCallback(
     (row: PendingPromptQueueRow) => {
-      if (!sessionId || row.seq <= 0 || mutationsBySessionIdRef.current.has(sessionId)) {
+      if (!sessionId || row.seq <= 0) {
         return;
       }
       const targetSessionId = sessionId;
-      const token = startMutation(targetSessionId, {
-        kind: "steer",
-        steeringSeq: row.seq,
-        optimisticOrder: null,
-      });
+      // `startMutation` self-enforces the single-in-flight lock now — a
+      // null token means one is already in flight for this session, so
+      // there is nothing left to guard against here.
+      const token = startMutation(targetSessionId, { type: "steer_started", seq: row.seq });
+      if (!token) {
+        return;
+      }
       void steerPendingPromptMutation.mutateAsync({ sessionId: targetSessionId, seq: row.seq })
         .catch((error: unknown) => {
           toast.show({
@@ -205,7 +235,7 @@ export function useMobilePendingPromptQueue({
 
   const requestReorder = useCallback(
     (fromIndex: number, toIndex: number) => {
-      if (!sessionId || mutationsBySessionIdRef.current.has(sessionId)) {
+      if (!sessionId) {
         return;
       }
       const request = computeReorderRequest(rows, fromIndex, toIndex);
@@ -218,11 +248,15 @@ export function useMobilePendingPromptQueue({
       if (moved) {
         optimisticRows.splice(toIndex, 0, moved);
       }
+      // Same self-enforced lock as `onSteer` above — a null token means a
+      // mutation is already in flight for this session.
       const token = startMutation(targetSessionId, {
-        kind: "reorder",
-        steeringSeq: null,
-        optimisticOrder: optimisticRows.map((optimisticRow) => optimisticRow.key),
+        type: "reorder_started",
+        order: optimisticRows.map((optimisticRow) => optimisticRow.key),
       });
+      if (!token) {
+        return;
+      }
       void reorderPendingPromptsMutation.mutateAsync({
         sessionId: targetSessionId,
         expectedSeqs: request.expectedSeqs,
