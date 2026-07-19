@@ -35,6 +35,12 @@ export function MobileLiveTranscriptRow({ row }: MobileLiveTranscriptRowProps) {
       return <ErrorRow row={row} />;
     case "pending_interaction":
       return <PendingInteractionRow row={row} />;
+    default:
+      // Exhaustiveness fallback: a component returning `undefined` (rather
+      // than `null`) throws. `row.kind` is exhaustively typed today, but a
+      // malformed/future row shape reaching here at runtime shouldn't crash
+      // the transcript — render nothing for it instead.
+      return null;
   }
 }
 
@@ -160,6 +166,13 @@ function PendingInteractionRow({
 }
 
 function formatStatus(status: string): string {
+  // Defends against a malformed plan-entry/tool-call payload (e.g. a
+  // reducer bug or an unexpected server shape) handing this a
+  // non-string/undefined `status` — `.replace` would otherwise throw and
+  // take the whole transcript row down with it.
+  if (typeof status !== "string") {
+    return "";
+  }
   return status.replace(/_/g, " ");
 }
 
