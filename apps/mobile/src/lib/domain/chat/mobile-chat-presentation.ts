@@ -162,6 +162,33 @@ export function mobileStatus(status: string | null | undefined): MobileStatusVal
   return "idle";
 }
 
+/**
+ * Maps the chat-screen status vocabulary (`MobileStatusValue`, 5 values) onto
+ * the design system's condensed `ContextCapsuleStatus` (`@proliferate/design/
+ * glass`, 4 values: running/awaiting/idle/errored - design-system.md §2.3's
+ * tone table). Used by the workspace route's native-header context capsule
+ * (app/workspace/[id].tsx via MobileChatScreen), which replaced the status
+ * dot that used to sit in the custom `MobileChatHeader`.
+ *
+ * There's no chat-session-level "needs attention" status today (that lives
+ * in per-interaction pending state, not this enum), so nothing maps to
+ * `awaiting` here - `failed` is the only tone that isn't a plain "at rest"
+ * idle: `paused` and `done` both read as inactive/neutral, same as
+ * `MobileStatusDot`'s own tone table treats them closer to idle than to the
+ * `success`/`info` extremes.
+ */
+export function contextCapsuleStatusFromMobileStatus(
+  status: MobileStatusValue,
+): "running" | "awaiting" | "idle" | "errored" {
+  if (status === "running") {
+    return "running";
+  }
+  if (status === "failed") {
+    return "errored";
+  }
+  return "idle";
+}
+
 export function isRejectedCommandStatus(status: CloudCommandStatus): boolean {
   return status === "rejected"
     || status === "expired"

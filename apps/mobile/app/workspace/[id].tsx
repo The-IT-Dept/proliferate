@@ -25,23 +25,23 @@ import { colors } from "../../src/styles/tokens";
  * `onOpenChat`, and `useMobilePendingPromptRestore` reads that store first,
  * falling back to `chat.initialPendingPrompt` only if storage is empty.
  *
- * Native large-title / glass nav-bar header options
- * (`headerLargeTitleEnabled`, `headerTransparent` + `headerBlurEffect`, or
- * relying on iOS 26's automatic `scrollEdgeEffects` with `headerTransparent`
- * alone) are available on this Stack.Screen but intentionally unused here:
- * `MobileChatScreen` already renders its own `MobileChatHeader` (title,
- * back button, session controls), and turning on the native header too
- * would double up. Adopting the native header is a later-group rewrite of
- * `MobileChatHeader`, not part of this navigation migration.
+ * The native header (compact, glass via `headerTransparent` +
+ * `headerBlurEffect`) is configured on this route's `Stack.Screen` entry in
+ * `app/_layout.tsx` (static: headerShown/headerTransparent/headerBlurEffect)
+ * plus `MobileChatScreen`'s own inline `<Stack.Screen options={{ title,
+ * headerRight }} />` (dynamic: title + session/actions, since those depend
+ * on chat state that lives in that component, not here). The back button is
+ * the native default - it pops the stack the same way the old `onBack`
+ * handler did, so this route no longer passes one down.
  */
 export default function WorkspaceRoute() {
-  const router = useRouter();
   const { id, sessionId, interaction } = useLocalSearchParams<{
     id: string;
     sessionId?: string;
     interaction?: string;
   }>();
   const { user, accessToken } = useMobileAuth();
+  const router = useRouter();
 
   const chat: MobileCloudChat = {
     workspaceId: id,
@@ -60,13 +60,12 @@ export default function WorkspaceRoute() {
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: colors.background }}
-      edges={["top", "right", "bottom", "left"]}
+      edges={["right", "bottom", "left"]}
     >
       <MobileChatScreen
         chat={chat}
         ownerUserId={user?.id ?? null}
         productToken={accessToken}
-        onBack={() => router.back()}
         onSessionSelected={(nextSessionId) => router.setParams({ sessionId: nextSessionId })}
       />
     </SafeAreaView>

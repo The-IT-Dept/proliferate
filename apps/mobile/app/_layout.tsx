@@ -105,7 +105,24 @@ function RootNavigationGate() {
           </Stack.Protected>
           <Stack.Protected guard={stage === "tabs"}>
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="workspace/[id]" options={{ animation: "slide_from_right" }} />
+            <Stack.Screen
+              name="workspace/[id]"
+              options={{
+                animation: "slide_from_right",
+                headerShown: true,
+                // Compact (non-large) header: the workspace shell has its own
+                // glass segmented control below (IA §2.3), unlike the 4 tab
+                // roots which each get a large title
+                // (app/(tabs)/*/_layout.tsx). headerLargeTitleEnabled would
+                // auto-transparent the header background on iOS (see that
+                // layout's comment); a compact header needs headerTransparent
+                // + headerBlurEffect set explicitly to get the same glass,
+                // reliably on every iOS version (not just 26's automatic
+                // scrollEdgeEffects).
+                headerTransparent: true,
+                headerBlurEffect: "systemChromeMaterial",
+              }}
+            />
           </Stack.Protected>
         </Stack>
       </ThemeProvider>

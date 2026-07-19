@@ -4,7 +4,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  View,
 } from "react-native";
+import { Stack } from "expo-router";
+import { ContextCapsule } from "@proliferate/design/glass";
 import {
   DEFAULT_DIRECT_PROMPT_AGENT_KIND,
   DEFAULT_DIRECT_PROMPT_MODEL_ID,
@@ -27,6 +30,7 @@ import type {
 } from "../../lib/domain/workspace/mobile-workspace-chat";
 import type { OptimisticPrompt } from "../../lib/domain/chat/mobile-chat-transcript";
 import {
+  contextCapsuleStatusFromMobileStatus,
   mobileStatus,
   summarizeRuntimeContext,
 } from "../../lib/domain/chat/mobile-chat-presentation";
@@ -35,10 +39,10 @@ import {
   isPromptProgressStatus,
   loadingStatusText,
 } from "../../lib/domain/chat/mobile-chat-row-presentation";
-import { colors } from "../../styles/tokens";
+import { colors, radius, spacing } from "../../styles/tokens";
 import { MobileChatClaimBanner } from "./screen/MobileChatClaimBanner";
 import { MobileChatComposer } from "./screen/MobileChatComposer";
-import { MobileChatHeader } from "./screen/MobileChatHeader";
+import { MobileChatHeaderActions } from "./screen/MobileChatHeaderActions";
 import { MobileChatToolDetailSheet } from "./screen/MobileChatToolDetailSheet";
 import { MobileChatTranscript } from "./screen/MobileChatTranscript";
 
@@ -46,7 +50,6 @@ interface MobileChatScreenProps {
   chat: MobileCloudChat;
   ownerUserId: string | null;
   productToken: string | null;
-  onBack: () => void;
   onInitialPendingPromptConsumed?: () => void;
   onSessionSelected?: (sessionId: string) => void;
 }
@@ -55,7 +58,6 @@ export function MobileChatScreen({
   chat,
   ownerUserId,
   productToken,
-  onBack,
   onInitialPendingPromptConsumed,
   onSessionSelected,
 }: MobileChatScreenProps) {
@@ -273,16 +275,41 @@ export function MobileChatScreen({
       behavior={Platform.select({ ios: "padding", default: undefined })}
       keyboardVerticalOffset={0}
     >
-      <MobileChatHeader
-        title={title}
-        subtitle={subtitle}
-        status={mobileStatus(session?.status ?? workspaceStatus)}
-        sessionsCount={sessions.length}
-        unclaimed={isUnclaimed}
-        onBack={onBack}
-        onOpenSessions={() => openWorkspaceActionSheet("sessions")}
-        onOpenActions={() => openWorkspaceActionSheet()}
+      {/*
+        Native header (compact, not large-title - see the workspace/[id]
+        Stack.Screen options in app/_layout.tsx for the glass setup). Actions
+        that used to live in the custom MobileChatHeader's trailing slot move
+        into headerRight; the back button is the native default (no headerLeft
+        override needed - it already pops the stack the same way `onBack` used
+        to). `subtitle` (owner/repo) has no native header slot to live in, so
+        it renders below as the IA's "context capsule" instead (repo · branch
+        · status, design-system.md §3.2) - see the ContextCapsule row below.
+      */}
+      <Stack.Screen
+        options={{
+          title,
+          headerRight: () => (
+            <MobileChatHeaderActions
+              sessionsCount={sessions.length}
+              unclaimed={isUnclaimed}
+              onOpenSessions={() => openWorkspaceActionSheet("sessions")}
+              onOpenActions={() => openWorkspaceActionSheet()}
+            />
+          ),
+        }}
       />
+
+      {subtitle ? (
+        <View style={styles.contextCapsuleRow}>
+          <View style={styles.contextCapsulePill}>
+            <ContextCapsule
+              repo={subtitle}
+              branch={branchLabel}
+              status={contextCapsuleStatusFromMobileStatus(mobileStatus(session?.status ?? workspaceStatus))}
+            />
+          </View>
+        </View>
+      ) : null}
 
       {isUnclaimed ? (
         <MobileChatClaimBanner
@@ -359,5 +386,16 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  contextCapsuleRow: {
+    alignItems: "center",
+    paddingTop: spacing[2],
+    paddingBottom: spacing[1],
+  },
+  contextCapsulePill: {
+    backgroundColor: colors.accent,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radius.full,
   },
 });
