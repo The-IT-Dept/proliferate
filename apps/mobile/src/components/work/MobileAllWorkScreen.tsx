@@ -19,6 +19,7 @@ import {
 } from "../../lib/domain/work/mobile-work-filters";
 import { mobileIconForRuntimeLocation } from "../../lib/domain/work/mobile-work-presentation";
 import type { MobileCloudChat } from "../../lib/domain/workspace/mobile-workspace-chat";
+import { useMobileToast } from "../../providers/MobileToastProvider";
 import { MobileWorkspaceActionSheet } from "../chat/MobileWorkspaceActionSheet";
 import { MobileIcon } from "../primitives/MobileIcon";
 import {
@@ -51,6 +52,36 @@ export function MobileWorkspacesScreen({
   const inventory = useMobileWorkInventory(filterState.filters);
   const claimActions = useMobileWorkClaimActions();
   const managementActions = useMobileWorkspaceManagementActions();
+  const toast = useMobileToast();
+
+  // I1: the mutation drives the sheet, not the button press. The sheet stays
+  // open (showing the archiving/restoring/deleting/renaming pending label)
+  // while `action` is in flight; on success the sheet closes and a brief
+  // success toast confirms it; on failure the sheet stays open and the
+  // error surfaces as a toast instead of vanishing silently. `workspaceId`
+  // guards against a stale close: if the user has since dismissed this sheet
+  // and opened a different workspace's before this promise settles, closing
+  // is skipped rather than yanking away the *new* sheet. Deliberately no
+  // optimistic row removal — the row only disappears once
+  // invalidateWorkspaceLists (inside useMobileWorkspaceManagementActions)
+  // lands a real refetch.
+  function runManagementAction(options: {
+    workspaceId: string;
+    action: Promise<unknown>;
+    verb: string;
+    successMessage: string;
+  }) {
+    void options.action
+      .then(() => {
+        setManagedItem((current) => (current?.workspace.id === options.workspaceId ? null : current));
+        toast.show({ tone: "success", message: options.successMessage });
+      })
+      .catch((error: unknown) => {
+        console.warn(`Failed to ${options.verb} workspace`, error);
+        const detail = error instanceof Error && error.message ? `: ${error.message}` : ".";
+        toast.show({ tone: "error", message: `Couldn't ${options.verb} workspace${detail}` });
+      });
+  }
   // Access-loss (PR 7): when managed-Cloud capability is no longer ready, keep
   // existing Cloud workspace records visible but locked and explained. Only
   // treat an explicit non-ready capability as loss — an in-flight/unknown read
@@ -215,25 +246,35 @@ export function MobileWorkspacesScreen({
             deleting: managementActions.isDeletingWorkspace,
             onOpen: () => onOpenChat(managedItem.chat),
             onRename: (nextName) => {
-              void managementActions
-                .renameWorkspace(managedItem.workspace.id, nextName)
-                .catch((error) => {
-                  console.warn("Failed to rename workspace", error);
-                });
+              runManagementAction({
+                workspaceId: managedItem.workspace.id,
+                action: managementActions.renameWorkspace(managedItem.workspace.id, nextName),
+                verb: "rename",
+                successMessage: "Workspace renamed.",
+              });
             },
             onArchive: () => {
-              void managementActions.archiveWorkspace(managedItem.workspace.id).catch((error) => {
-                console.warn("Failed to archive workspace", error);
+              runManagementAction({
+                workspaceId: managedItem.workspace.id,
+                action: managementActions.archiveWorkspace(managedItem.workspace.id),
+                verb: "archive",
+                successMessage: "Workspace archived.",
               });
             },
             onRestore: () => {
-              void managementActions.restoreWorkspace(managedItem.workspace.id).catch((error) => {
-                console.warn("Failed to restore workspace", error);
+              runManagementAction({
+                workspaceId: managedItem.workspace.id,
+                action: managementActions.restoreWorkspace(managedItem.workspace.id),
+                verb: "restore",
+                successMessage: "Workspace restored.",
               });
             },
             onDelete: () => {
-              void managementActions.deleteWorkspace(managedItem.workspace.id).catch((error) => {
-                console.warn("Failed to delete workspace", error);
+              runManagementAction({
+                workspaceId: managedItem.workspace.id,
+                action: managementActions.deleteWorkspace(managedItem.workspace.id),
+                verb: "delete",
+                successMessage: "Workspace deleted.",
               });
             },
           }}

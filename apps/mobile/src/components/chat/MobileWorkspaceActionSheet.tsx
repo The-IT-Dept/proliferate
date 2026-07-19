@@ -15,7 +15,13 @@ import {
  * archive/restore, delete. `displayName` seeds the rename draft; `onOpen` is
  * only meaningful when the sheet is opened from a list row rather than from
  * inside the workspace itself. Delete's confirm ("cannot be undone", web
- * copy family) lives in this component, not the caller. */
+ * copy family) lives in this component, not the caller.
+ *
+ * Archive/restore/delete stay open (not closed) while their mutation is
+ * pending so `archiving`/`restoring`/`deleting` pending labels render (I1) —
+ * the caller (management action's promise) is responsible for closing the
+ * sheet on success and surfacing a toast on failure; this component never
+ * closes itself in response to firing one of these. */
 export interface MobileWorkspaceManagementInput {
   displayName: string;
   archived: boolean;
@@ -120,10 +126,11 @@ export function MobileWorkspaceActionSheet({
         {
           text: "Delete workspace",
           style: "destructive",
-          onPress: () => {
-            closeSheet();
-            management.onDelete();
-          },
+          // No closeSheet() here (I1): the sheet stays open showing the
+          // "Deleting…" pending label while the mutation runs. The caller's
+          // onDelete owns closing the sheet on success / toasting on
+          // failure — see MobileWorkspaceManagementInput's doc comment.
+          onPress: () => management.onDelete(),
         },
       ],
     );
@@ -220,14 +227,12 @@ export function MobileWorkspaceActionSheet({
                   management.onOpen?.();
                 }),
                 onRename: () => setRenameDraft(management.displayName),
-                onArchive: () => {
-                  closeSheet();
-                  management.onArchive();
-                },
-                onRestore: () => {
-                  closeSheet();
-                  management.onRestore();
-                },
+                // No closeSheet() (I1): archive/restore stay open showing
+                // their pending label while the mutation runs, same as
+                // delete above — the caller's promise closes the sheet on
+                // success and toasts on failure.
+                onArchive: () => management.onArchive(),
+                onRestore: () => management.onRestore(),
                 onDelete: confirmDelete,
               }}
               onClaim={() => {
