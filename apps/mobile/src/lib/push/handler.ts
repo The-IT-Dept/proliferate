@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 
@@ -49,11 +49,23 @@ Notifications.setNotificationHandler({
 export function useMobilePushDeepLinkHandler(input: { enabled: boolean }): void {
   const router = useRouter();
   const response = Notifications.useLastNotificationResponse();
+  // `useLastNotificationResponse` returns a STABLE (persisted) response -
+  // nothing consumes/clears it. Without this, an `enabled` flip
+  // (sign-out -> sign-in) with the same persisted response re-fires this
+  // effect and re-navigates into the stale workspace from an old tap. Track
+  // the last-handled notification identifier and skip re-processing it, so
+  // each distinct tap is only ever routed once.
+  const lastHandledIdentifierRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!input.enabled || !response) {
       return;
     }
+    const identifier = response.notification.request.identifier;
+    if (lastHandledIdentifierRef.current === identifier) {
+      return;
+    }
+    lastHandledIdentifierRef.current = identifier;
     const link = parsePushDeepLink(response.notification.request.content.data);
     if (!link) {
       return;
