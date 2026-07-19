@@ -1,10 +1,21 @@
 import { useCallback, useState } from "react";
+import { AnyHarnessError } from "@anyharness/sdk";
 import { useApprovePlanMutation, useRejectPlanMutation } from "@anyharness/sdk-react";
 import type { CloudWorkspaceDetail } from "@proliferate/cloud-sdk";
 
 import { buildPlanDecisionRequest } from "../../../lib/domain/chat/mobile-plan-decision-resolve";
 import { resolveMobileInteractionBlockReason } from "../../../lib/access/anyharness/cloud-sandbox-runtime";
 import { useMobileToast } from "../../../providers/MobileToastProvider";
+
+/** Fix 3 (reviewer finding) — web's `showToast("Plan decision was updated.
+ * Refreshed plan state.")` on a `PLAN_DECISION_VERSION_CONFLICT`/
+ * `PLAN_DECISION_TERMINAL` 409 (`use-proposed-plan-actions.ts`'s
+ * `runPlanDecisionMutation`), verbatim. Web additionally refetches the plan
+ * into a query cache mobile doesn't have; here the live transcript stream
+ * is the only source of truth, so this is just the toast text, no
+ * refetch — the raw server `error.message` for that 409 is internal
+ * wording never meant for end users. */
+const PLAN_DECISION_CONFLICT_MESSAGE = "Plan decision was updated. Refreshed plan state.";
 
 /**
  * Row 20 — Approve/Reject a proposed plan (`ProposedPlanRow` in
@@ -32,7 +43,9 @@ import { useMobileToast } from "../../../providers/MobileToastProvider";
  * into a plan-detail query cache (`useProposedPlanCache`,
  * `use-proposed-plan-actions.ts`). Mobile has no such cache to reconcile —
  * `stream.transcript` is the only source of truth here — so a conflict
- * just surfaces as a toast; the next transcript event naturally carries the
+ * just surfaces as a toast (the friendly verbatim copy web shows after its
+ * refetch — `PLAN_DECISION_CONFLICT_MESSAGE` below, Fix 3 — not the raw
+ * server `error.message`); the next transcript event naturally carries the
  * real, current decision state and the row updates (buttons re-derive from
  * fresh `decisionVersion`/`decisionState`) without any special-cased retry.
  *
@@ -89,7 +102,7 @@ export function useMobilePlanDecisionActions({
       } catch (error) {
         toast.show({
           tone: "error",
-          message: error instanceof Error ? error.message : failureMessage,
+          message: resolvePlanDecisionErrorMessage(error, failureMessage),
         });
       } finally {
         setDeciding((current) => (current?.planId === planId ? null : current));
@@ -119,3 +132,26 @@ export function useMobilePlanDecisionActions({
 }
 
 export type MobilePlanDecisionActions = ReturnType<typeof useMobilePlanDecisionActions>;
+
+/** Fix 3 (reviewer finding) — detected the same way web's
+ * `isPlanDecisionRefreshConflict` does (`use-proposed-plan-actions.ts`): an
+ * `AnyHarnessError` (`@anyharness/sdk`, the error `useApprovePlanMutation`/
+ * `useRejectPlanMutation` actually reject with) whose RFC 7807
+ * `problem.status` is 409 and `problem.code` is
+ * `PLAN_DECISION_VERSION_CONFLICT` or `PLAN_DECISION_TERMINAL`. Every other
+ * error keeps surfacing `error.message` (or the generic `fallback` for a
+ * non-`Error` throw), unchanged from before this fix. */
+function resolvePlanDecisionErrorMessage(error: unknown, fallback: string): string {
+  if (isPlanDecisionConflict(error)) {
+    return PLAN_DECISION_CONFLICT_MESSAGE;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+function isPlanDecisionConflict(error: unknown): boolean {
+  return (
+    error instanceof AnyHarnessError
+    && error.problem.status === 409
+    && (error.problem.code === "PLAN_DECISION_VERSION_CONFLICT" || error.problem.code === "PLAN_DECISION_TERMINAL")
+  );
+}
