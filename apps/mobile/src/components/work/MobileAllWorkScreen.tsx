@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -31,12 +30,10 @@ import { colors, layout, radius, spacing } from "../../styles/tokens";
 
 interface MobileWorkspacesScreenProps {
   onOpenChat: (chat: MobileCloudChat) => void;
-  onNewChat: () => void;
 }
 
 export function MobileWorkspacesScreen({
   onOpenChat,
-  onNewChat,
 }: MobileWorkspacesScreenProps) {
   // The native tab bar computes its own content insets for the first
   // scroll view in a tab screen (app/(tabs)/_layout.tsx), so this no
@@ -72,19 +69,6 @@ export function MobileWorkspacesScreen({
         />
       }
     >
-      <View style={styles.header}>
-        <View style={styles.headerButton} />
-        <Text style={styles.title}>Workspaces</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="New chat"
-          onPress={onNewChat}
-          style={({ pressed }) => [styles.headerButton, styles.headerButtonRaised, pressed && styles.pressed]}
-        >
-          <MobileIcon name="plus" size={20} color={colors.fg} />
-        </Pressable>
-      </View>
-
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -207,30 +191,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingTop: 0,
   },
-  header: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing[4],
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: radius.full,
-  },
-  headerButtonRaised: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-  },
-  title: {
-    color: colors.fg,
-    fontSize: 16,
-    fontWeight: "600",
-  },
   pills: {
     gap: spacing[2],
     paddingHorizontal: spacing[4],
@@ -277,8 +237,5 @@ const styles = StyleSheet.create({
   },
   cards: {
     gap: spacing[2],
-  },
-  pressed: {
-    opacity: 0.7,
   },
 });

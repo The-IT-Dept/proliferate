@@ -3,7 +3,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { Stack, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
+import { Stack, ThemeProvider, useGlobalSearchParams, usePathname, useRouter } from "expo-router";
 
 import { getMobileTelemetryConfig } from "../src/lib/integrations/telemetry/config";
 import { initializeMobilePostHog } from "../src/lib/integrations/telemetry/posthog";
@@ -17,7 +17,7 @@ import { MobileAuthProvider, useMobileAuth } from "../src/providers/MobileAuthPr
 import { MobileCloudProvider } from "../src/providers/MobileCloudProvider";
 import { MobileTelemetryProvider } from "../src/providers/MobileTelemetryProvider";
 import { MobileWorkspaceRuntimeProvider } from "../src/providers/MobileWorkspaceRuntimeProvider";
-import { colors, spacing } from "../src/styles/tokens";
+import { colors, mobileNavigationTheme, spacing } from "../src/styles/tokens";
 
 // Same telemetry bootstrap `index.ts` used to run before `registerRootComponent`
 // (module scope, once, before first render). Expo Router owns the entry point
@@ -88,19 +88,27 @@ function RootNavigationGate() {
 
   return (
     <MobileWorkspaceRuntimeProvider workspaceId={activeWorkspaceId ?? null}>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Protected guard={stage === "signed_out" || stage === "needs_github"}>
-          <Stack.Screen name="(auth)" />
-        </Stack.Protected>
-        <Stack.Protected guard={stage === "onboarding"}>
-          <Stack.Screen name="onboarding" />
-        </Stack.Protected>
-        <Stack.Protected guard={stage === "tabs"}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="workspace/[id]" options={{ animation: "slide_from_right" }} />
-        </Stack.Protected>
-      </Stack>
+      {/*
+        See mobileNavigationTheme's doc comment (styles/tokens.ts): without
+        this, every native Stack header below (root + the nested per-tab
+        Stacks) would render React Navigation's light DefaultTheme colors
+        over this app's all-dark surfaces.
+      */}
+      <ThemeProvider value={mobileNavigationTheme}>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Protected guard={stage === "signed_out" || stage === "needs_github"}>
+            <Stack.Screen name="(auth)" />
+          </Stack.Protected>
+          <Stack.Protected guard={stage === "onboarding"}>
+            <Stack.Screen name="onboarding" />
+          </Stack.Protected>
+          <Stack.Protected guard={stage === "tabs"}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="workspace/[id]" options={{ animation: "slide_from_right" }} />
+          </Stack.Protected>
+        </Stack>
+      </ThemeProvider>
     </MobileWorkspaceRuntimeProvider>
   );
 }
