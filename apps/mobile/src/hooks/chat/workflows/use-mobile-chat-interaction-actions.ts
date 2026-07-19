@@ -9,6 +9,7 @@ import {
   useResolveSessionInteractionMutation,
   useRevealMcpElicitationUrlMutation,
 } from "@anyharness/sdk-react";
+import type { CloudWorkspaceDetail } from "@proliferate/cloud-sdk";
 
 import {
   buildMcpElicitationAcceptedRequest,
@@ -19,6 +20,7 @@ import {
   buildUserInputCancelledRequest,
   buildUserInputSubmittedRequest,
 } from "../../../lib/domain/chat/mobile-chat-interaction-resolve";
+import { resolveMobileInteractionBlockReason } from "../../../lib/access/anyharness/cloud-sandbox-runtime";
 import { useMobileToast } from "../../../providers/MobileToastProvider";
 
 /**
@@ -43,7 +45,15 @@ import { useMobileToast } from "../../../providers/MobileToastProvider";
  * local pending flag — mirrors the pattern `useMobilePendingPromptQueue`
  * uses for queue mutations.
  */
-export function useMobileChatInteractionActions({ sessionId }: { sessionId: string | null }) {
+export function useMobileChatInteractionActions({
+  sessionId,
+  workspace,
+  isUnclaimed,
+}: {
+  sessionId: string | null;
+  workspace: CloudWorkspaceDetail | null;
+  isUnclaimed: boolean;
+}) {
   const resolveMutation = useResolveSessionInteractionMutation();
   const revealUrlMutation = useRevealMcpElicitationUrlMutation();
   const toast = useMobileToast();
@@ -52,6 +62,17 @@ export function useMobileChatInteractionActions({ sessionId }: { sessionId: stri
   const resolve = useCallback(
     async (requestId: string, request: ResolveInteractionRequest) => {
       if (!sessionId) {
+        // E3-#2: a silent no-op here reads as a dead button — tell the user
+        // why nothing happened instead.
+        toast.show({
+          tone: "error",
+          message: "Session is still loading. Try again in a moment.",
+        });
+        return;
+      }
+      const blockReason = resolveMobileInteractionBlockReason({ workspace, isUnclaimed });
+      if (blockReason) {
+        toast.show({ tone: "error", message: blockReason });
         return;
       }
       setResolvingRequestId(requestId);
@@ -66,7 +87,7 @@ export function useMobileChatInteractionActions({ sessionId }: { sessionId: stri
         setResolvingRequestId((current) => (current === requestId ? null : current));
       }
     },
-    [resolveMutation, sessionId, toast],
+    [resolveMutation, sessionId, toast, workspace, isUnclaimed],
   );
 
   const resolvePermissionOption = useCallback(
@@ -110,6 +131,15 @@ export function useMobileChatInteractionActions({ sessionId }: { sessionId: stri
   const revealMcpElicitationUrl = useCallback(
     async (requestId: string): Promise<string | null> => {
       if (!sessionId) {
+        toast.show({
+          tone: "error",
+          message: "Session is still loading. Try again in a moment.",
+        });
+        return null;
+      }
+      const blockReason = resolveMobileInteractionBlockReason({ workspace, isUnclaimed });
+      if (blockReason) {
+        toast.show({ tone: "error", message: blockReason });
         return null;
       }
       try {
@@ -123,7 +153,7 @@ export function useMobileChatInteractionActions({ sessionId }: { sessionId: stri
         return null;
       }
     },
-    [revealUrlMutation, sessionId, toast],
+    [revealUrlMutation, sessionId, toast, workspace, isUnclaimed],
   );
 
   return {

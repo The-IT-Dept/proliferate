@@ -170,8 +170,17 @@ export function MobileChatScreen({
   // the two non-interaction checks below (`commandMessageShownInTranscript`)
   // and `transcriptView.source` (`emptyTitle`) — neither reads pending
   // interactions.
+  // Hoisted here (rather than declared just before its first read further
+  // down, near the claim banner/command-readiness checks) so both
+  // `useMobileChatInteractionActions` and `useMobileChatActions` below can
+  // take it as an input. Always `false` for now — mobile has no claim flow
+  // wired up yet (`claimChat()` is a stub returning `false`); this becomes
+  // real once that lands.
+  const isUnclaimed = false;
   const interactionActions = useMobileChatInteractionActions({
     sessionId: session?.sessionId ?? null,
+    workspace,
+    isUnclaimed,
   });
   const runtimeContext = summarizeRuntimeContext(workspace, workspaceStatus);
   const {
@@ -202,7 +211,7 @@ export function MobileChatScreen({
     runtimeLabel: runtimeContext.label,
     transcriptItems,
     transcriptRows: transcriptView.rows,
-    isUnclaimed: false,
+    isUnclaimed,
     pendingConfigChanges,
     setDraft,
     setLaunchSelection,
@@ -287,7 +296,6 @@ export function MobileChatScreen({
     setActionSheetInitialExpandedId(null);
   }
 
-  const isUnclaimed = false;
   const commandReadiness = workspace ? cloudCommandReadiness(workspace) : null;
   const workspaceCommandReady =
     workspaceStatus === "ready"

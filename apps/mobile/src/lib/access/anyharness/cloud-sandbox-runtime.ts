@@ -25,6 +25,41 @@ export function isMobileCloudSandboxWorkspace(
   return workspace?.sandboxType === "managed_personal" || workspace?.sandboxType === "managed_shared";
 }
 
+/**
+ * Fix C (E3 borderline-Important, reviewer finding): the pre-flight guard
+ * the now-deleted `resolvePermissionInteraction`
+ * (`use-mobile-chat-actions.ts`, removed in the E3/I2 collapse commit) used
+ * to run before its hand-rolled `anyharness.sessions.resolveInteraction`
+ * call — restored in `useMobileChatInteractionActions`'s `resolve()`/
+ * `revealMcpElicitationUrl()`, which had started firing the real
+ * `useResolveSessionInteractionMutation`/`useRevealMcpElicitationUrlMutation`
+ * unconditionally. Mirrors web's `getWorkspaceRuntimeBlockReason` check
+ * (`use-session-interaction-resolution-actions.ts`): an unclaimed workspace
+ * or one whose cloud sandbox runtime isn't ready must not reach the
+ * mutation. Messages are verbatim from the deleted hook — the same copy
+ * `use-mobile-chat-prompt-actions.ts`'s `submitPrompt` pre-flight already
+ * reuses for the composer's send path, so approving/declining/answering an
+ * interaction and sending a prompt fail the same way for the same reasons.
+ *
+ * Lives here (not in a `lib/domain` module alongside the interaction
+ * request builders) so it can reuse `isMobileCloudSandboxWorkspace` above
+ * without introducing a domain -> access import; it's kept dependency-free
+ * (no React/React Native imports) precisely so it stays unit-testable
+ * without pulling those in transitively — see this file's `.test.ts`.
+ */
+export function resolveMobileInteractionBlockReason(input: {
+  workspace: Pick<CloudWorkspaceDetail, "sandboxType"> | null;
+  isUnclaimed: boolean;
+}): string | null {
+  if (input.isUnclaimed) {
+    return "Claim this workspace before approving commands from mobile.";
+  }
+  if (!isMobileCloudSandboxWorkspace(input.workspace)) {
+    return "Cloud workspace runtime is unavailable.";
+  }
+  return null;
+}
+
 export async function resolveMobileCloudSandboxWorkspaceConnection(input: {
   workspace: CloudWorkspaceDetail;
   productToken: string | null;

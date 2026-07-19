@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ProliferateClientError, type CloudWorkspaceDetail, type ProliferateCloudClient } from "@proliferate/cloud-sdk";
 
-import { resolveMobileCloudSandboxWorkspaceConnection } from "./cloud-sandbox-runtime";
+import {
+  resolveMobileCloudSandboxWorkspaceConnection,
+  resolveMobileInteractionBlockReason,
+} from "./cloud-sandbox-runtime";
 
 function fakeClient(): ProliferateCloudClient {
   return {
@@ -59,5 +62,49 @@ describe("resolveMobileCloudSandboxWorkspaceConnection", () => {
       client: fakeClient(),
     }).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ProliferateClientError);
+  });
+});
+
+describe("resolveMobileInteractionBlockReason", () => {
+  it("blocks with the claim message when the workspace is unclaimed, even if the runtime looks ready", () => {
+    expect(resolveMobileInteractionBlockReason({
+      workspace: { sandboxType: "managed_personal" },
+      isUnclaimed: true,
+    })).toBe("Claim this workspace before approving commands from mobile.");
+  });
+
+  it("blocks with the runtime-unavailable message when claimed but the sandbox type isn't a managed cloud runtime", () => {
+    expect(resolveMobileInteractionBlockReason({
+      workspace: { sandboxType: "byo" as never },
+      isUnclaimed: false,
+    })).toBe("Cloud workspace runtime is unavailable.");
+  });
+
+  it("blocks with the runtime-unavailable message when the workspace hasn't loaded yet", () => {
+    expect(resolveMobileInteractionBlockReason({
+      workspace: null,
+      isUnclaimed: false,
+    })).toBe("Cloud workspace runtime is unavailable.");
+  });
+
+  it("checks unclaimed before runtime availability — the claim message wins when both would block", () => {
+    expect(resolveMobileInteractionBlockReason({
+      workspace: null,
+      isUnclaimed: true,
+    })).toBe("Claim this workspace before approving commands from mobile.");
+  });
+
+  it("does not block a claimed, managed-personal-sandbox workspace", () => {
+    expect(resolveMobileInteractionBlockReason({
+      workspace: { sandboxType: "managed_personal" },
+      isUnclaimed: false,
+    })).toBeNull();
+  });
+
+  it("does not block a claimed, managed-shared-sandbox workspace", () => {
+    expect(resolveMobileInteractionBlockReason({
+      workspace: { sandboxType: "managed_shared" },
+      isUnclaimed: false,
+    })).toBeNull();
   });
 });
