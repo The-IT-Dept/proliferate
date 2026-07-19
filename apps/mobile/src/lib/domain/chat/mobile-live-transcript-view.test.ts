@@ -10,7 +10,11 @@ import {
   PROPOSED_PLAN_ITEM_ENVELOPE,
   PROPOSED_PLAN_ITEM_ID,
   SESSION_ID,
+  THOUGHT_ITEM_ENVELOPE,
+  THOUGHT_ITEM_ID,
   TOOL_CALL_ITEM_ID,
+  UNKNOWN_ITEM_ENVELOPE,
+  UNKNOWN_ITEM_ID,
   USER_INPUT_REQUESTED_ENVELOPE,
   USER_MESSAGE_ITEM_ID,
 } from "../../../hooks/chat/derived/__fixtures__/session-transcript-fixtures";
@@ -142,5 +146,38 @@ describe("buildLiveTranscriptRows — plan, proposed_plan, and error items", () 
       expect(errorRow.message).toBe("The sandbox lost its connection to the runtime.");
       expect(errorRow.code).toBe("RUNTIME_DISCONNECTED");
     }
+  });
+
+  it("renders a thought (reasoning) item's row", () => {
+    const transcript = reduceEvents(
+      [...CANNED_SESSION_ENVELOPES, THOUGHT_ITEM_ENVELOPE],
+      SESSION_ID,
+    );
+    const rows = buildLiveTranscriptRows(transcript);
+    const thoughtRow = rows.find((row) => row.id === THOUGHT_ITEM_ID);
+    expect(thoughtRow?.kind).toBe("thought");
+    if (thoughtRow?.kind === "thought") {
+      expect(thoughtRow.text).toBe("Consider the edge cases first.");
+      expect(thoughtRow.isStreaming).toBe(false);
+    }
+  });
+
+  it("skips an unknown transcript item — no row for it, and it doesn't blow up the rest of the transcript", () => {
+    const transcript = reduceEvents(
+      [...CANNED_SESSION_ENVELOPES, UNKNOWN_ITEM_ENVELOPE],
+      SESSION_ID,
+    );
+    // The reducer does record the item (for diagnostics) — confirms this is
+    // actually exercising the "unknown" path, not a fixture no-op.
+    expect(transcript.itemsById[UNKNOWN_ITEM_ID]?.kind).toBe("unknown");
+
+    const rows = buildLiveTranscriptRows(transcript);
+    expect(rows.some((row) => row.id === UNKNOWN_ITEM_ID)).toBe(false);
+    // The known rows from the canned turn are still present, in order.
+    expect(rows.map((row) => row.id)).toEqual([
+      USER_MESSAGE_ITEM_ID,
+      ASSISTANT_ITEM_ID,
+      TOOL_CALL_ITEM_ID,
+    ]);
   });
 });

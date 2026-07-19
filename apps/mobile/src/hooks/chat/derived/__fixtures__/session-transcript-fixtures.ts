@@ -254,3 +254,38 @@ export const USER_INPUT_REQUESTED_ENVELOPE: SessionEventEnvelope = envelope(
   },
   { turnId: TURN_ID },
 );
+
+export const THOUGHT_ITEM_ID = "item-thought-1";
+
+/** A `reasoning` item — the wire kind that reduces to a `thought`
+ * `TranscriptItem`. */
+export const THOUGHT_ITEM_ENVELOPE: SessionEventEnvelope = envelope(
+  17,
+  {
+    type: "item_started",
+    item: {
+      kind: "reasoning",
+      status: "completed",
+      sourceAgentKind: "claude",
+      contentParts: [
+        { type: "reasoning", text: "Consider the edge cases first.", visibility: "private" },
+      ],
+    },
+  },
+  { turnId: TURN_ID, itemId: THOUGHT_ITEM_ID },
+);
+
+export const UNKNOWN_ITEM_ID = "item-unknown-1";
+
+/** An event type the reducer doesn't recognize — falls into the `default`
+ * case of the top-level event switch, which records an `unknown`
+ * `TranscriptItem` (`recordUnknown` in `reducer/transcript.ts`) instead of
+ * throwing or dropping it silently. Cast through `unknown` the same way the
+ * SDK's own reducer tests construct off-schema envelopes, since
+ * `SessionEventEnvelope["event"]` is a closed, generated union that doesn't
+ * (and shouldn't) include a made-up type. */
+export const UNKNOWN_ITEM_ENVELOPE: SessionEventEnvelope = envelope(
+  18,
+  { type: "some_future_event_type_the_client_does_not_know_about" } as unknown as SessionEventEnvelope["event"],
+  { turnId: TURN_ID, itemId: UNKNOWN_ITEM_ID },
+);
