@@ -10,6 +10,7 @@ import {
   recentWorkSourceLabel,
   type RecentWorkRuntimeLocation,
 } from "@proliferate/product-domain/workspaces/cloud-work-inventory";
+import type { SidebarSessionActivityState } from "@proliferate/product-domain/sessions/activity-types";
 
 export type MobileChatIconName =
   | "brain"
@@ -150,7 +151,7 @@ export function mobileStatus(status: string | null | undefined): MobileStatusVal
   if (status === "running") {
     return "running";
   }
-  if (status === "failed" || status === "error") {
+  if (status === "failed" || status === "error" || status === "errored") {
     return "failed";
   }
   if (status === "paused") {
@@ -170,12 +171,15 @@ export function mobileStatus(status: string | null | undefined): MobileStatusVal
  * (app/workspace/[id].tsx via MobileChatScreen), which replaced the status
  * dot that used to sit in the custom `MobileChatHeader`.
  *
- * There's no chat-session-level "needs attention" status today (that lives
- * in per-interaction pending state, not this enum), so nothing maps to
+ * `MobileStatusValue` has no "needs attention" value (that lives in
+ * per-interaction pending state, not this enum), so nothing maps to
  * `awaiting` here - `failed` is the only tone that isn't a plain "at rest"
  * idle: `paused` and `done` both read as inactive/neutral, same as
  * `MobileStatusDot`'s own tone table treats them closer to idle than to the
- * `success`/`info` extremes.
+ * `success`/`info` extremes. Status-only fallback for callers with no active
+ * session's full activity snapshot to resolve; when one is available, prefer
+ * `contextCapsuleStatusFromSessionActivity` below, which *can* surface
+ * `awaiting`.
  */
 export function contextCapsuleStatusFromMobileStatus(
   status: MobileStatusValue,
@@ -187,6 +191,41 @@ export function contextCapsuleStatusFromMobileStatus(
     return "errored";
   }
   return "idle";
+}
+
+/**
+ * Maps a `SidebarSessionActivityState` - the same resolved state
+ * (`resolveSessionSidebarActivityState`) the workspace shell's Sessions list
+ * uses via `mobile-session-list.ts` - onto `ContextCapsuleStatus`. This is
+ * what keeps the always-on capsule consistent-by-construction with the
+ * Sessions list: both start from the exact same resolver over the exact same
+ * `SessionActivitySnapshot`, so they can't disagree about a session's state
+ * the way feeding a raw `SessionStatus` through `mobileStatus` could -
+ * that path didn't know about the `awaiting_interaction` execution phase
+ * (status alone stays `"running"` while awaiting input) and mishandled the
+ * real `"errored"` status value.
+ *
+ * `waiting_input` and `waiting_plan` both read as `awaiting` here - the
+ * capsule's condensed vocabulary doesn't distinguish "waiting for input"
+ * from "waiting for plan approval" (the Sessions list rows do, via their own
+ * richer label). `closed` reads as `idle`, matching `contextCapsuleStatusFrom
+ * MobileStatus`'s treatment of other "at rest" statuses.
+ */
+export function contextCapsuleStatusFromSessionActivity(
+  activity: SidebarSessionActivityState,
+): "running" | "awaiting" | "idle" | "errored" {
+  switch (activity) {
+    case "iterating":
+      return "running";
+    case "waiting_input":
+    case "waiting_plan":
+      return "awaiting";
+    case "error":
+      return "errored";
+    case "closed":
+    case "idle":
+      return "idle";
+  }
 }
 
 export function isRejectedCommandStatus(status: CloudCommandStatus): boolean {

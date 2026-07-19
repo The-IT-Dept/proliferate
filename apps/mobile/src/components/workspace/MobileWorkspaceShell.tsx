@@ -5,6 +5,7 @@ import { Stack } from "expo-router";
 import { ContextCapsule } from "@proliferate/design/glass";
 import { useCloudWorkspace } from "@proliferate/cloud-sdk-react";
 import { useSessionQuery, useWorkspaceSessionsQuery } from "@anyharness/sdk-react";
+import { resolveSessionSidebarActivityState } from "@proliferate/product-domain/sessions/activity";
 
 import { MobileChatScreen } from "../chat/MobileChatScreen";
 import { MobileWorkspaceSegmentedControl } from "./MobileWorkspaceSegmentedControl";
@@ -15,9 +16,13 @@ import {
   defaultWorkspaceSegment,
   type WorkspaceSegmentId,
 } from "../../lib/domain/workspace/mobile-workspace-segment";
-import { chatSegmentAttentionCount } from "../../lib/domain/workspace/mobile-session-list";
+import {
+  chatSegmentAttentionCount,
+  sessionActivitySnapshotFromSession,
+} from "../../lib/domain/workspace/mobile-session-list";
 import {
   contextCapsuleStatusFromMobileStatus,
+  contextCapsuleStatusFromSessionActivity,
   effectiveWorkspaceStatus,
   mobileStatus,
 } from "../../lib/domain/chat/mobile-chat-presentation";
@@ -79,12 +84,21 @@ export function MobileWorkspaceShell({
     : chat.repoLabel;
   const branchLabel =
     workspace?.repo?.branch ?? workspace?.repo?.baseBranch ?? chat.branchLabel;
-  const capsuleStatus = contextCapsuleStatusFromMobileStatus(
-    mobileStatus(
-      activeSession?.status
-        ?? (workspace ? effectiveWorkspaceStatus(workspace) : chat.status),
-    ),
-  );
+  // Consistent-by-construction with the Sessions list (mobile-session-list.ts):
+  // once we have the active session, derive the capsule status from the same
+  // `resolveSessionSidebarActivityState` resolver the list uses, over the
+  // same activity snapshot, instead of the raw `SessionStatus` alone - that
+  // path can't see the `awaiting_interaction` execution phase and mishandled
+  // the real `"errored"` status value. Falls back to the coarser
+  // status-only derivation only while there's no active session to resolve
+  // (e.g. before the workspace/session queries have settled).
+  const capsuleStatus = activeSession
+    ? contextCapsuleStatusFromSessionActivity(
+        resolveSessionSidebarActivityState(sessionActivitySnapshotFromSession(activeSession)),
+      )
+    : contextCapsuleStatusFromMobileStatus(
+        mobileStatus(workspace ? effectiveWorkspaceStatus(workspace) : chat.status),
+      );
 
   function openSession(sessionId: string) {
     onSessionSelected(sessionId);
