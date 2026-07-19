@@ -10,13 +10,18 @@ import type { MobileIconName } from "../../../components/primitives/MobileIcon";
  * (`product-client/src/components/content/ui/FileDiffCard.tsx`), the only
  * web component that renders a changed-file row, shows just the path and
  * +N/-N stats; it never prints "Modified"/"Added"/etc, and the mockup H
- * file-list rows use icon color alone (no status word) too. So there is no
- * verbatim web STRING to copy here — same situation `terminal-status.ts`
- * documents for `TerminalStatus`. This mirrors that precedent: Title-case
- * the raw SDK enum value for the row label (mobile has no hover state to
- * fall back on the way FileDiffCard's stats-only row can), and reuse the raw
- * enum value itself verbatim as the vocabulary (never invent new status
- * names).
+ * file-list rows use icon color alone (no status word) too.
+ *
+ * So `label` is NOT rendered as visible row text — `FileRow`
+ * (`MobileWorkspaceDiffSegment.tsx`) shows only the icon/tone and the path,
+ * matching that web parity. `label` instead feeds the row's
+ * `accessibilityLabel` (path + status, e.g. "src/x.ts, Modified"), since the
+ * status is otherwise conveyed by icon + tone-color alone and would
+ * otherwise be invisible to assistive tech. Title-casing the raw SDK enum
+ * value (mobile has no hover state to fall back on the way FileDiffCard's
+ * stats-only row can) and reusing the raw enum value itself verbatim as the
+ * vocabulary (never inventing new status names) follows the same precedent
+ * `terminal-status.ts` documents for `TerminalStatus`.
  */
 
 export type GitFileStatusTone = "positive" | "caution" | "danger" | "neutral";
@@ -39,4 +44,14 @@ const GIT_FILE_STATUS_PRESENTATION: Record<GitFileStatus, GitFileStatusPresentat
 
 export function gitFileStatusPresentation(status: GitFileStatus): GitFileStatusPresentation {
   return GIT_FILE_STATUS_PRESENTATION[status];
+}
+
+/**
+ * M1 — the changed-file row's `accessibilityLabel`: path + status label
+ * (e.g. "src/x.ts, Modified"). Makes `label` live (it isn't rendered as
+ * visible text — see the module doc comment) and gives assistive tech the
+ * status that a sighted user gets from icon + tone-color alone.
+ */
+export function gitFileStatusAccessibilityLabel(displayPath: string, status: GitFileStatus): string {
+  return `${displayPath}, ${gitFileStatusPresentation(status).label}`;
 }

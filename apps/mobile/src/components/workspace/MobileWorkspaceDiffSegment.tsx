@@ -22,7 +22,10 @@ import {
   type MobileDiffMode,
 } from "../../lib/domain/workspace/mobile-diff-changes";
 import { resolveMobileDiffBaseRef } from "../../lib/domain/workspace/mobile-diff-base-ref";
-import { gitFileStatusPresentation } from "../../lib/domain/workspace/mobile-git-file-status";
+import {
+  gitFileStatusAccessibilityLabel,
+  gitFileStatusPresentation,
+} from "../../lib/domain/workspace/mobile-git-file-status";
 import { prStatusKindFromSummary } from "../../lib/domain/workspace/mobile-pr-status";
 import { colors, radius, spacing } from "../../styles/tokens";
 
@@ -225,6 +228,7 @@ function FileRow({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={gitFileStatusAccessibilityLabel(file.displayPath, file.status)}
       accessibilityState={{ selected }}
       onPress={onPress}
       style={({ pressed }) => [

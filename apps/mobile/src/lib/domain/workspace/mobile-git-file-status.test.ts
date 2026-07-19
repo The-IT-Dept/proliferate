@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gitFileStatusPresentation } from "./mobile-git-file-status";
+import { gitFileStatusAccessibilityLabel, gitFileStatusPresentation } from "./mobile-git-file-status";
 
 describe("gitFileStatusPresentation", () => {
   it("labels every GitFileStatus value Title-cased", () => {
@@ -44,5 +44,18 @@ describe("gitFileStatusPresentation", () => {
     for (const status of statuses) {
       expect(gitFileStatusPresentation(status).icon).toBeTruthy();
     }
+  });
+});
+
+// M1 — the a11y label FileRow reads for its accessibilityLabel.
+describe("gitFileStatusAccessibilityLabel", () => {
+  it("joins the display path and the Title-cased status label", () => {
+    expect(gitFileStatusAccessibilityLabel("src/x.ts", "modified")).toBe("src/x.ts, Modified");
+    expect(gitFileStatusAccessibilityLabel("new-file.ts", "added")).toBe("new-file.ts, Added");
+  });
+
+  it("uses the rename display path verbatim", () => {
+    expect(gitFileStatusAccessibilityLabel("old.ts -> new.ts", "renamed"))
+      .toBe("old.ts -> new.ts, Renamed");
   });
 });
