@@ -72,6 +72,11 @@ export function useSessionTranscriptStream(input: {
     controller: SessionTranscriptStreamController | null;
   }>({ sessionId: null, controller: null });
   if (controllerRef.current.sessionId !== input.sessionId) {
+    // Runs during render, so the destroy() here MUST be side-effect-silent
+    // toward React: `SessionTranscriptStreamController.destroy()` drops its
+    // subscribers before tearing the connection down precisely so this
+    // render-phase call can't publish a `useSyncExternalStore` update
+    // mid-render (see that method's comment).
     controllerRef.current.controller?.destroy();
     controllerRef.current = {
       sessionId: input.sessionId,

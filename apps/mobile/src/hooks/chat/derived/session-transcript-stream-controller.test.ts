@@ -151,6 +151,32 @@ describe("SessionTranscriptStreamController", () => {
     }
   });
 
+  it("destroy() tears the connection down WITHOUT notifying subscribers", async () => {
+    // `use-session-transcript-stream.ts` calls destroy() from its render-phase
+    // controller swap (when `sessionId` changes). If destroy() published to a
+    // still-attached `useSyncExternalStore` listener, that listener would fire
+    // a setState during render — React's "Cannot update a component while
+    // rendering a different component" warning, and a torn transcript on every
+    // session switch. A destroyed controller is being discarded, so its final
+    // "closed" transition must reach no one.
+    const { streamSession, calls, closeSpies } = fakeStreamSession();
+    const controller = new SessionTranscriptStreamController(SESSION_ID, { streamSession });
+    controller.activate(makeResolveConnection());
+    await flushConnect();
+    calls[0]?.onOpen?.();
+
+    const listener = vi.fn();
+    controller.subscribe(listener);
+
+    controller.destroy();
+
+    // The connection is still closed (handle torn down)...
+    expect(closeSpies[0]).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot().connectionState).toBe("closed");
+    // ...but no subscriber was notified during the teardown.
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("ignores a late onEvent delivered after deactivate() (stale generation): no mutation, no notify", async () => {
     const { streamSession, calls } = fakeStreamSession();
     const controller = new SessionTranscriptStreamController(SESSION_ID, { streamSession });

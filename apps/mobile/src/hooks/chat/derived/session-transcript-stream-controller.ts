@@ -132,8 +132,21 @@ export class SessionTranscriptStreamController {
   }
 
   destroy(): void {
-    this.deactivate();
+    // Drop subscribers BEFORE tearing the connection down, not after. A
+    // controller reaching `destroy()` is being discarded outright — its
+    // session changed, or the hook unmounted — and `use-session-transcript-
+    // stream.ts` calls it from the render-phase controller swap (recreating
+    // the controller when `sessionId` changes). `deactivate()` publishes a
+    // `connectionState: "closed"` transition; if a live `useSyncExternalStore`
+    // listener is still attached when that publish runs during render, it
+    // fires a setState mid-render — React's "Cannot update a component while
+    // rendering a different component" warning — and hands the store a torn
+    // snapshot on every session switch. The replacement controller already
+    // owns the subscribers by then, so this one's final transition is nobody's
+    // business: clear the listeners first so the teardown publish notifies no
+    // one, then close the connection silently.
     this.listeners.clear();
+    this.deactivate();
   }
 
   private connect(resolveConnection: () => Promise<SessionStreamConnectionInfo>): void {
