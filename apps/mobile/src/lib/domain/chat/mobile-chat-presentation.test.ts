@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { CloudWorkspaceDetail } from "@proliferate/cloud-sdk";
 
 import {
   contextCapsuleStatusFromMobileStatus,
   contextCapsuleStatusFromSessionActivity,
+  hasReadyAgentKind,
   mobileStatus,
+  resolveAgentKind,
 } from "./mobile-chat-presentation";
 
 describe("contextCapsuleStatusFromMobileStatus", () => {
@@ -65,5 +68,45 @@ describe("contextCapsuleStatusFromSessionActivity", () => {
 
   it("maps idle to idle", () => {
     expect(contextCapsuleStatusFromSessionActivity("idle")).toBe("idle");
+  });
+});
+
+function workspaceFixture(overrides: Partial<CloudWorkspaceDetail> = {}): CloudWorkspaceDetail {
+  return {
+    readyAgentKinds: [],
+    allowedAgentKinds: [],
+    ...overrides,
+  } as unknown as CloudWorkspaceDetail;
+}
+
+describe("resolveAgentKind", () => {
+  it("resolves to codex for a codex-only workspace, not the previously hardcoded 'claude'", () => {
+    const workspace = workspaceFixture({
+      readyAgentKinds: ["codex"],
+      allowedAgentKinds: ["claude", "codex"],
+    });
+    expect(resolveAgentKind(workspace)).toBe("codex");
+  });
+
+  it("resolves to the ready kind when codex isn't ready", () => {
+    const workspace = workspaceFixture({
+      readyAgentKinds: ["claude"],
+      allowedAgentKinds: ["claude", "codex"],
+    });
+    expect(resolveAgentKind(workspace)).toBe("claude");
+  });
+});
+
+describe("hasReadyAgentKind", () => {
+  it("is true once at least one agent kind is ready", () => {
+    expect(hasReadyAgentKind(workspaceFixture({ readyAgentKinds: ["codex"] }))).toBe(true);
+  });
+
+  it("is false when nothing is ready yet, even if kinds are allowed", () => {
+    const workspace = workspaceFixture({
+      readyAgentKinds: [],
+      allowedAgentKinds: ["claude", "codex"],
+    });
+    expect(hasReadyAgentKind(workspace)).toBe(false);
   });
 });

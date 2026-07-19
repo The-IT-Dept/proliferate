@@ -269,11 +269,32 @@ export function promptCommandFailureMessage(status: CloudCommandStatus): string 
   }
 }
 
+/**
+ * Which agent kind a new session should launch with - prefers `codex` when
+ * it's ready, else the first ready kind, else (defensively) the first
+ * allowed-but-not-yet-ready kind. Always returns *some* kind, even for a
+ * workspace with nothing ready at all, so callers that create sessions
+ * should gate on `hasReadyAgentKind` first rather than relying on this to
+ * signal unreadiness.
+ */
 export function resolveAgentKind(workspace: CloudWorkspaceDetail): string {
   if (workspace.readyAgentKinds?.includes("codex")) {
     return "codex";
   }
   return workspace.readyAgentKinds?.[0] ?? workspace.allowedAgentKinds?.[0] ?? "codex";
+}
+
+/**
+ * Whether the workspace has at least one agent kind actually provisioned and
+ * ready to run a session. `allowedAgentKinds` alone isn't enough to start a
+ * commandable session - a codex-only workspace (`claude` allowed but not yet
+ * provisioned) has `readyAgentKinds: ["codex"]`, and a workspace with
+ * nothing provisioned yet has `readyAgentKinds: []` regardless of what's
+ * allowed. Session-creation UI (the Sessions segment's "New session") should
+ * gate on this before calling `resolveAgentKind`.
+ */
+export function hasReadyAgentKind(workspace: CloudWorkspaceDetail): boolean {
+  return (workspace.readyAgentKinds?.length ?? 0) > 0;
 }
 
 function sessionRecencyMs(

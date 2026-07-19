@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Session } from "@anyharness/sdk";
+import type { CloudWorkspaceDetail } from "@proliferate/cloud-sdk";
 import { parseTime, relativeTimeLabel } from "@proliferate/product-domain/workspaces/cloud-work-time";
 
 import { MobileIcon, type MobileIconName } from "../primitives/MobileIcon";
@@ -15,13 +16,21 @@ import {
   mobileSessionStatusLabel,
   type MobileSessionTone,
 } from "../../lib/domain/workspace/mobile-session-list";
+import {
+  hasReadyAgentKind,
+  resolveAgentKind,
+} from "../../lib/domain/chat/mobile-chat-presentation";
 import { colors, radius, spacing } from "../../styles/tokens";
-
-const DEFAULT_SESSION_AGENT_KIND = "claude";
 
 interface MobileWorkspaceSessionsProps {
   /** Anyharness workspace id, needed to create a session; null until ready. */
   anyharnessWorkspaceId: string | null;
+  /**
+   * The cloud workspace, needed to resolve which agent kind a new session
+   * should launch with (`resolveAgentKind`) and whether any agent is ready
+   * at all (`hasReadyAgentKind`); null until the workspace query settles.
+   */
+  workspace: CloudWorkspaceDetail | null;
   /** Space to clear the floating header + capsule + segmented control above. */
   topInset: number;
   /** Switch the shell to Chat, targeting the given session. */
@@ -40,6 +49,7 @@ interface MobileWorkspaceSessionsProps {
  */
 export function MobileWorkspaceSessions({
   anyharnessWorkspaceId,
+  workspace,
   topInset,
   onOpenSession,
 }: MobileWorkspaceSessionsProps) {
@@ -58,6 +68,10 @@ export function MobileWorkspaceSessions({
 
   const grouped = groupWorkspaceSessions(sessions);
   const isEmpty = grouped.active.length === 0 && grouped.earlier.length === 0;
+  // A workspace can have agent kinds allowed but none provisioned yet (e.g. a
+  // codex-only workspace before claude is set up) - `resolveAgentKind` always
+  // returns *some* kind, so the readiness gate has to be checked separately.
+  const canStartNewSession = workspace !== null && hasReadyAgentKind(workspace);
 
   // Pending -> success/error, mirroring Group C's discipline. A transient
   // "pending" toast is replaced (dismissed, then re-shown) with the result, so
@@ -82,11 +96,14 @@ export function MobileWorkspaceSessions({
   }
 
   function handleNewSession() {
+    if (!workspace || !canStartNewSession) {
+      return;
+    }
     runSessionAction({
       pending: "Starting a new session…",
       success: "Session started",
       failVerb: "start the session",
-      action: createSession({ agentKind: DEFAULT_SESSION_AGENT_KIND }).then((session) => {
+      action: createSession({ agentKind: resolveAgentKind(workspace) }).then((session) => {
         onOpenSession(session.id);
       }),
     });
@@ -174,11 +191,12 @@ export function MobileWorkspaceSessions({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="New session"
-          disabled={isCreatingSession || !anyharnessWorkspaceId}
+          disabled={isCreatingSession || !anyharnessWorkspaceId || !canStartNewSession}
           onPress={handleNewSession}
           style={({ pressed }) => [
             styles.newSessionButton,
-            (isCreatingSession || !anyharnessWorkspaceId) && styles.newSessionButtonDisabled,
+            (isCreatingSession || !anyharnessWorkspaceId || !canStartNewSession)
+              && styles.newSessionButtonDisabled,
             pressed && styles.newSessionButtonPressed,
           ]}
         >

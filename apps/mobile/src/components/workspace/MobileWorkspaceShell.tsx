@@ -128,6 +128,7 @@ export function MobileWorkspaceShell({
         <View style={StyleSheet.absoluteFill}>
           <MobileWorkspaceSessions
             anyharnessWorkspaceId={workspace?.anyharnessWorkspaceId ?? null}
+            workspace={workspace}
             topInset={bodyTopInset}
             onOpenSession={openSession}
           />
