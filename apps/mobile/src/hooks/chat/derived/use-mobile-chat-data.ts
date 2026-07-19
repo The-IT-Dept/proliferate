@@ -2,18 +2,14 @@ import type {
   SessionEventEnvelope,
   SessionExecutionSummary,
 } from "@anyharness/sdk";
-import { reduceEvents } from "@anyharness/sdk";
-import { useQuery } from "@tanstack/react-query";
+import { useWorkspaceSessionsQuery } from "@anyharness/sdk-react";
 import { useMemo } from "react";
 import type {
   CloudPendingInteraction,
   CloudSessionEvent,
   CloudTranscriptItem,
 } from "@proliferate/cloud-sdk";
-import {
-  useCloudClient,
-  useCloudWorkspace,
-} from "@proliferate/cloud-sdk-react";
+import { useCloudWorkspace } from "@proliferate/cloud-sdk-react";
 import {
   buildCloudTranscriptView,
   cloudTranscriptHasAgentProgressAfterPrompt,
@@ -32,6 +28,9 @@ import {
   optimisticPromptFromPending,
 } from "../../../lib/domain/chat/mobile-chat-transcript";
 import {
+  buildLiveTranscriptRows,
+} from "../../../lib/domain/chat/mobile-live-transcript-view";
+import {
   cloudPendingInteractionsFromExecutionSummary,
   cloudPendingInteractionsFromReducer,
   cloudSessionEventFromAnyHarness,
@@ -42,16 +41,38 @@ import {
   effectiveWorkspaceStatus,
   sessionProjectionFromChat,
 } from "../../../lib/domain/chat/mobile-chat-presentation";
-import {
-  getMobileCloudSandboxAnyHarnessClient,
-} from "../../../lib/access/anyharness/cloud-sandbox-runtime";
+import { useSessionTranscriptStream } from "./use-session-transcript-stream";
 
 const EMPTY_TRANSCRIPT_ITEMS: CloudTranscriptItem[] = [];
-const EMPTY_SESSION_EVENTS: CloudSessionEvent[] = [];
 
+/**
+ * Group E1 rework — this used to run its OWN manual polling `useQuery` for
+ * both the session list (`mobile-cloud-anyharness-sessions`, refetching
+ * every 1.5-5s) and the session events (same interval), separate from the
+ * shell's `@anyharness/sdk-react` `useWorkspaceSessionsQuery`. That meant two
+ * independent session sources: `useCreateSessionMutation`'s cache
+ * invalidation (keyed by `anyHarnessSessionsKey`) never reached this hook,
+ * so creating a session and opening it here showed stale data until the next
+ * poll tick (deferred D#3/#4).
+ *
+ * Now: sessions come from the SAME `useWorkspaceSessionsQuery` the shell
+ * uses (shared cache key, so the mutation's invalidation reaches both), and
+ * the transcript comes from `useSessionTranscriptStream` (SSE via
+ * `streamSession` + the SDK reducer, not polling) gated on `active` — when
+ * the Chat segment isn't the shell's active segment, the stream pauses
+ * instead of streaming a hidden screen, and resumes from where it left off
+ * (via `afterSeq`) without losing accumulated transcript state.
+ *
+ * The live envelope log the stream accumulates still feeds
+ * `buildCloudTranscriptView` (the existing `@proliferate/product-domain`
+ * "Cloud" row/pending-prompt projection) so the composer, permission
+ * auto-open sheet, and pending-prompt queue (E2's territory) keep working
+ * unchanged off the same live data — this hook's return shape is otherwise
+ * unchanged from before this rework.
+ */
 export function useMobileChatData({
   chat,
-  productToken,
+  active,
   selectedSessionId,
   newSessionMode,
   pendingPrompt,
@@ -60,7 +81,9 @@ export function useMobileChatData({
   optimisticPrompts,
 }: {
   chat: MobileCloudChat;
-  productToken: string | null;
+  /** Group D's off-segment gate — whether the Chat segment is the shell's
+   * active segment. Threaded through to `useSessionTranscriptStream`. */
+  active: boolean;
   selectedSessionId: string | null;
   newSessionMode: boolean;
   pendingPrompt: MobilePendingPrompt | null;
@@ -68,38 +91,24 @@ export function useMobileChatData({
   pendingPromptStatus: string | null;
   optimisticPrompts: readonly OptimisticPrompt[];
 }) {
-  const client = useCloudClient();
   const workspaceQuery = useCloudWorkspace(chat.workspaceId, true);
   const workspace = workspaceQuery.data ?? null;
-  const sessionsQuery = useQuery({
-    queryKey: [
-      "mobile-cloud-anyharness-sessions",
-      workspace?.id ?? null,
-      workspace?.anyharnessWorkspaceId ?? null,
-    ],
-    enabled: Boolean(workspace?.anyharnessWorkspaceId) && Boolean(productToken),
-    refetchInterval: pendingPrompt || optimisticPrompts.length > 0 ? 1500 : 5000,
-    queryFn: async () => {
-      if (!workspace) {
-        return [];
-      }
-      const { connection, anyharness } = await getMobileCloudSandboxAnyHarnessClient({
-        workspace,
-        productToken,
-        client,
-      });
-      const sessions = await anyharness.sessions.list(connection.anyharnessWorkspaceId);
-      return sessions.map((session) => cloudSessionProjectionFromAnyHarness(
-        session,
-        workspace.id,
-        connection.anyharnessWorkspaceId,
-      ));
-    },
-  });
-  const sessions = useMemo(
-    () => [...(sessionsQuery.data ?? [])].sort(compareSessions),
-    [sessionsQuery.data],
-  );
+
+  const sessionsQuery = useWorkspaceSessionsQuery({ workspaceId: chat.workspaceId });
+  const sessions = useMemo(() => {
+    if (!workspace) {
+      return [];
+    }
+    return [...(sessionsQuery.data ?? [])]
+      .map((rawSession) =>
+        cloudSessionProjectionFromAnyHarness(
+          rawSession,
+          workspace.id,
+          workspace.anyharnessWorkspaceId ?? "",
+        )
+      )
+      .sort(compareSessions);
+  }, [sessionsQuery.data, workspace]);
   const fallbackSession = useMemo(() => sessionProjectionFromChat(chat), [chat]);
   const singleInferredSession = !chat.sessionId && sessions.length === 1 ? sessions[0] ?? null : null;
   const selectedSession = selectedSessionId
@@ -115,58 +124,45 @@ export function useMobileChatData({
   const activeSessionId = session?.sessionId ?? selectedSessionId;
   const targetId = session?.targetId ?? workspace?.targetId ?? chat.targetId;
   const workspaceStatus = workspace ? effectiveWorkspaceStatus(workspace) : chat.status;
+
+  const stream = useSessionTranscriptStream({
+    sessionId: session?.sessionId ?? null,
+    active,
+  });
   const sessionLive = {
     lastPatchAt: sessionsQuery.dataUpdatedAt ? new Date(sessionsQuery.dataUpdatedAt) : null,
-    isConnected: false,
+    isConnected: stream.connectionState === "open",
   };
+  // Kept only so the pre-existing composer/permission-sheet call sites
+  // (`transcriptRefetch`/`sessionEventsRefetch` — E2's territory) keep their
+  // expected shape. They're inert now: the stream pushes new events itself,
+  // there is nothing left to imperatively refetch.
+  const noopRefetch = () => undefined;
   const transcriptQuery = {
     data: undefined as { transcriptItems: CloudTranscriptItem[]; pendingInteractions: CloudPendingInteraction[] } | undefined,
-    isLoading: sessionsQuery.isLoading,
-    refetch: sessionsQuery.refetch,
+    isLoading: stream.connectionState === "connecting",
+    refetch: noopRefetch,
   };
-  const sessionEventsQuery = useQuery({
-    queryKey: [
-      "mobile-cloud-anyharness-session-events",
-      workspace?.id ?? null,
-      workspace?.anyharnessWorkspaceId ?? null,
-      session?.sessionId ?? null,
-    ],
-    enabled: Boolean(workspace?.anyharnessWorkspaceId) && Boolean(session?.sessionId) && Boolean(productToken),
-    refetchInterval: pendingPrompt || optimisticPrompts.length > 0 ? 1500 : 5000,
-    queryFn: async () => {
-      if (!workspace || !session) {
-        return { events: EMPTY_SESSION_EVENTS };
-      }
-      const { anyharness } = await getMobileCloudSandboxAnyHarnessClient({
-        workspace,
-        productToken,
-        client,
-      });
-      const envelopes = await anyharness.sessions.listEvents(session.sessionId, {
-        limit: 500,
-      });
-      return {
-        events: envelopes.map((envelope) =>
-          cloudSessionEventFromAnyHarness(envelope, workspace.id, session.sessionId)
-        ),
-      };
-    },
-  });
-  const transcriptItems =
-    transcriptQuery.data?.transcriptItems
-    ?? EMPTY_TRANSCRIPT_ITEMS;
-  const sessionEvents = sessionEventsQuery.data?.events ?? EMPTY_SESSION_EVENTS;
+  const sessionEventsQuery = {
+    isLoading: stream.connectionState === "connecting",
+    isFetched: stream.hasSynced,
+    refetch: noopRefetch,
+  };
+  const transcriptItems = EMPTY_TRANSCRIPT_ITEMS;
+  const sessionEvents = useMemo<CloudSessionEvent[]>(() => {
+    if (!session?.sessionId) {
+      return [];
+    }
+    const cloudWorkspaceId = workspace?.id ?? chat.workspaceId;
+    return stream.envelopes.map((envelope) =>
+      cloudSessionEventFromAnyHarness(envelope, cloudWorkspaceId, session.sessionId)
+    );
+  }, [stream.envelopes, session?.sessionId, workspace?.id, chat.workspaceId]);
   const pendingInteractions = useMemo(
     () => {
-      if (session?.sessionId && sessionEventsQuery.isFetched) {
-        const eventEnvelopes = sessionEvents
-          .map((event) => event.envelope)
-          .filter((envelope): envelope is SessionEventEnvelope =>
-            Boolean(envelope && typeof envelope === "object" && "event" in envelope)
-          );
-        const transcript = reduceEvents(eventEnvelopes, session.sessionId);
+      if (session?.sessionId && stream.hasSynced) {
         return cloudPendingInteractionsFromReducer(
-          transcript.pendingInteractions,
+          stream.transcript.pendingInteractions,
           session.sessionId,
         );
       }
@@ -175,12 +171,7 @@ export function useMobileChatData({
         session?.sessionId ?? null,
       );
     },
-    [
-      session?.executionSummary,
-      session?.sessionId,
-      sessionEvents,
-      sessionEventsQuery.isFetched,
-    ],
+    [session?.executionSummary, session?.sessionId, stream.transcript.pendingInteractions, stream.hasSynced],
   );
   const pendingPermissionByRequestId = useMemo(
     () => new Map(
@@ -205,6 +196,16 @@ export function useMobileChatData({
       pendingInteractions,
     }),
     [pendingInteractions, session?.sessionId, sessionEvents, transcriptItems],
+  );
+  // The new E1 renderer's row model — the actual TranscriptItem union,
+  // mapped straight off the live reduced state (no "Cloud domain"
+  // projection in between). This is what `MobileChatScreen` renders now;
+  // `transcriptView`/`visibleTranscriptRows` below remain only to keep the
+  // pending-prompt queue + permission auto-open sheet (E2/E3 territory)
+  // working unchanged off the same live data.
+  const liveTranscriptRows = useMemo(
+    () => buildLiveTranscriptRows(stream.transcript),
+    [stream.transcript],
   );
   const hasActiveOptimisticPrompt = useMemo(
     () =>
@@ -298,5 +299,13 @@ export function useMobileChatData({
     pendingPromptTranscriptState,
     pendingPromptDurable,
     visibleTranscriptRows,
+    // New for E1: the live TranscriptState + its row view-models, and the
+    // seam E3 consumes (`stream.transcript.pendingInteractions`, selected
+    // via `selectPrimaryPendingInteraction`/`selectPendingApprovalInteraction`
+    // from `@anyharness/sdk` directly over `transcript`).
+    transcript: stream.transcript,
+    transcriptConnectionState: stream.connectionState,
+    transcriptStreamError: stream.error,
+    liveTranscriptRows,
   };
 }

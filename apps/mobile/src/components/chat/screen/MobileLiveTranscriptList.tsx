@@ -1,24 +1,34 @@
 import { FlatList, StyleSheet, Text, View } from "react-native";
-import type { CloudChatTranscriptRowView } from "@proliferate/product-domain/chats/cloud/transcript-view";
 
-import { MobileChatMessageRow } from "./MobileChatMessageRow";
+import type { TranscriptRowViewModel } from "../../../lib/domain/chat/mobile-live-transcript-view";
+import { MobileLiveTranscriptRow } from "./MobileLiveTranscriptRow";
 import { colors, radius, spacing } from "../../../styles/tokens";
 
-interface MobileChatTranscriptProps {
-  rows: readonly CloudChatTranscriptRowView[];
+interface MobileLiveTranscriptListProps {
+  rows: readonly TranscriptRowViewModel[];
   emptyTitle: string;
   emptyBody: string;
-  footerMessage: string | null;
-  onToolPress: (row: CloudChatTranscriptRowView) => void;
 }
 
-export function MobileChatTranscript({
+/**
+ * Group E1's primary transcript view — a `FlatList` over the live,
+ * streamed `TranscriptState` (via `useSessionTranscriptStream` +
+ * `buildLiveTranscriptRows`), replacing the old polling-fed
+ * `MobileChatTranscript`/`CloudChatTranscriptRowView` list for the read
+ * path.
+ *
+ * Insets: this list does not add its own top offset. `MobileChatScreen`'s
+ * root `KeyboardAvoidingView` already applies `paddingTop: topInset` (the
+ * shell's header + floating chrome height) to the whole screen, and the
+ * composer sits below this list as a flex sibling, so it naturally clears
+ * the keyboard/home-indicator the same way the transcript it replaces did —
+ * re-adding either offset here would double it.
+ */
+export function MobileLiveTranscriptList({
   rows,
   emptyTitle,
   emptyBody,
-  footerMessage,
-  onToolPress,
-}: MobileChatTranscriptProps) {
+}: MobileLiveTranscriptListProps) {
   return (
     <FlatList
       style={styles.list}
@@ -26,21 +36,12 @@ export function MobileChatTranscript({
       keyboardShouldPersistTaps="handled"
       data={rows}
       keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <MobileChatMessageRow row={item} onToolPress={onToolPress} />
-      )}
+      renderItem={({ item }) => <MobileLiveTranscriptRow row={item} />}
       ListEmptyComponent={
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>{emptyTitle}</Text>
           <Text style={styles.emptyBody}>{emptyBody}</Text>
         </View>
-      }
-      ListFooterComponent={
-        footerMessage ? (
-          <View style={styles.controlNote}>
-            <Text style={styles.controlNoteText}>{footerMessage}</Text>
-          </View>
-        ) : null
       }
     />
   );
@@ -54,18 +55,6 @@ const styles = StyleSheet.create({
     padding: spacing[4],
     paddingBottom: spacing[5],
     gap: spacing[3],
-  },
-  controlNote: {
-    marginTop: spacing[2],
-    paddingVertical: spacing[2],
-    paddingHorizontal: spacing[3],
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-  },
-  controlNoteText: {
-    color: colors.faint,
-    fontSize: 12,
-    fontStyle: "italic",
   },
   empty: {
     padding: spacing[4],

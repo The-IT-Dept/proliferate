@@ -64,7 +64,7 @@ describe("buildLiveTranscriptRows — canned turn", () => {
 });
 
 describe("buildLiveTranscriptRows — pending interaction placeholder", () => {
-  it("does not duplicate a permission interaction already shown inline via the tool_call badge", () => {
+  it("appends one placeholder for a permission interaction tied to a tool call, alongside its pending tool_call row", () => {
     const upToRequest = CANNED_SESSION_ENVELOPES.slice(0, 9); // through interaction_requested
     const transcript = reduceEvents(upToRequest, SESSION_ID);
     const rows = buildLiveTranscriptRows(transcript);
@@ -74,7 +74,12 @@ describe("buildLiveTranscriptRows — pending interaction placeholder", () => {
     if (toolRow?.kind === "tool_call") {
       expect(toolRow.approvalState).toBe("pending");
     }
-    expect(rows.some((row) => row.kind === "pending_interaction")).toBe(false);
+    const placeholder = rows.at(-1);
+    expect(placeholder?.kind).toBe("pending_interaction");
+    if (placeholder?.kind === "pending_interaction") {
+      expect(placeholder.interactionKind).toBe("permission");
+      expect(placeholder.title).toBe("Allow running tests?");
+    }
   });
 
   it("appends a minimal, non-interactive placeholder for a user_input interaction with no tool call", () => {

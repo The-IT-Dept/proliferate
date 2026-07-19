@@ -140,8 +140,15 @@ export function buildLiveTranscriptRows(
     }
   }
 
+  // One placeholder for the primary pending interaction, full stop — not
+  // special-cased per interaction kind. The tool_call row still carries
+  // `approvalState` as data (useful, and truthful), but this module doesn't
+  // invent unverified badge copy ("Pending approval" etc. don't appear
+  // anywhere in the web client's tool row) to justify skipping the
+  // placeholder for a permission tied to a tool call. One predictable seam
+  // for E3 to replace with the real cards, instead of two.
   const pending = selectPrimaryPendingInteraction(transcript);
-  if (pending && !pendingInteractionIsRepresentedInline(pending)) {
+  if (pending) {
     rows.push(pendingInteractionPlaceholderRow(pending));
   }
 
@@ -336,10 +343,6 @@ function previewText(value: string): string | null {
   return trimmed.length <= MAX_PREVIEW_LENGTH
     ? trimmed
     : `${trimmed.slice(0, MAX_PREVIEW_LENGTH).trimEnd()}\n...`;
-}
-
-function pendingInteractionIsRepresentedInline(interaction: PendingInteraction): boolean {
-  return interaction.kind === "permission" && Boolean(interaction.toolCallId);
 }
 
 function pendingInteractionPlaceholderRow(

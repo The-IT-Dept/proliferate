@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -37,12 +38,12 @@ import {
   isPromptProgressStatus,
   loadingStatusText,
 } from "../../lib/domain/chat/mobile-chat-row-presentation";
-import { colors } from "../../styles/tokens";
+import { colors, radius, spacing } from "../../styles/tokens";
 import { MobileChatClaimBanner } from "./screen/MobileChatClaimBanner";
 import { MobileChatComposer } from "./screen/MobileChatComposer";
 import { MobileChatHeaderActions } from "./screen/MobileChatHeaderActions";
 import { MobileChatToolDetailSheet } from "./screen/MobileChatToolDetailSheet";
-import { MobileChatTranscript } from "./screen/MobileChatTranscript";
+import { MobileLiveTranscriptList } from "./screen/MobileLiveTranscriptList";
 
 interface MobileChatScreenProps {
   chat: MobileCloudChat;
@@ -128,9 +129,10 @@ export function MobileChatScreen({
     hasActiveOptimisticPrompt,
     pendingPromptDurable,
     visibleTranscriptRows,
+    liveTranscriptRows,
   } = useMobileChatData({
     chat,
-    productToken,
+    active,
     selectedSessionId,
     newSessionMode,
     pendingPrompt,
@@ -138,6 +140,14 @@ export function MobileChatScreen({
     pendingPromptStatus,
     optimisticPrompts,
   });
+  // E1 note: `visibleTranscriptRows` still exists (fed by the same live
+  // stream as `liveTranscriptRows` below, via the existing "Cloud domain"
+  // projection) purely so this hook's auto-open effect keeps surfacing the
+  // permission sheet the moment a permission interaction is requested — no
+  // tap required. `openToolDetailRow` (manual tap-to-open) has no caller
+  // now: the new live transcript renders tool calls as non-interactive per
+  // the plan ("E1 renders at most a minimal non-interactive placeholder for
+  // a pending interaction"); wiring real taps into a card is E3's job.
   const {
     toolDetailRow,
     toolDetailPermission,
@@ -146,7 +156,6 @@ export function MobileChatScreen({
     setToolDetailRow,
     setPermissionResolveError,
     setResolvingPermissionKey,
-    openToolDetailRow,
     closeToolDetailSheet,
     resetPermissionSheet,
   } = useMobileChatPermissionSheet({
@@ -335,8 +344,8 @@ export function MobileChatScreen({
         />
       ) : null}
 
-      <MobileChatTranscript
-        rows={visibleTranscriptRows}
+      <MobileLiveTranscriptList
+        rows={liveTranscriptRows}
         emptyTitle={emptyTitle}
         emptyBody={
           !session
@@ -345,9 +354,13 @@ export function MobileChatScreen({
               : "Send a prompt below to start a projected session."
             : "Transcript projection will appear here."
         }
-        footerMessage={footerCommandMessage}
-        onToolPress={openToolDetailRow}
       />
+
+      {footerCommandMessage ? (
+        <View style={styles.footerNote}>
+          <Text style={styles.footerNoteText}>{footerCommandMessage}</Text>
+        </View>
+      ) : null}
 
       <MobileChatComposer
         draft={draft}
@@ -403,5 +416,18 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  footerNote: {
+    marginHorizontal: spacing[4],
+    marginBottom: spacing[2],
+    paddingVertical: spacing[2],
+    paddingHorizontal: spacing[3],
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+  },
+  footerNoteText: {
+    color: colors.faint,
+    fontSize: 12,
+    fontStyle: "italic",
   },
 });
