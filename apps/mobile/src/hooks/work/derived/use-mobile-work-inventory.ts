@@ -4,10 +4,14 @@ import { useVisibleCloudWorkspaces } from "@proliferate/cloud-sdk-react";
 import {
   buildCloudWorkRecencyInventory,
   type CloudWorkFilters,
-  type CloudWorkRecencyGroupView,
   type CloudWorkItemView,
 } from "@proliferate/product-domain/workspaces/cloud-work-inventory";
 
+import { deriveMobileWorkAttentionCount } from "../../../lib/domain/work/mobile-work-attention";
+import {
+  groupByMobileWorkRecency,
+  type MobileWorkRecencyBucketId,
+} from "../../../lib/domain/work/mobile-work-recency";
 import type { MobileCloudChat } from "../../../lib/domain/workspace/mobile-workspace-chat";
 
 export interface MobileWorkItem {
@@ -16,8 +20,13 @@ export interface MobileWorkItem {
   chat: MobileCloudChat;
 }
 
+export interface MobileWorkGroupView {
+  id: MobileWorkRecencyBucketId;
+  label: string;
+}
+
 export interface MobileWorkGroup {
-  view: CloudWorkRecencyGroupView;
+  view: MobileWorkGroupView;
   items: MobileWorkItem[];
 }
 
@@ -25,6 +34,11 @@ export interface MobileWorkInventory {
   groups: MobileWorkGroup[];
   items: MobileWorkItem[];
   recentItems: MobileWorkItem[];
+  /** Count of workspaces needing attention (blocked, unclaimed-shared, or
+   * waiting on input) — see mobile-work-attention.ts. The pending-interaction
+   * count the Workspaces tab badge is meant to show (IA); computed here so
+   * whichever surface renders that badge doesn't re-derive it. */
+  attentionCount: number;
   isLoading: boolean;
   isFetching: boolean;
   error: Error | null;
@@ -37,25 +51,34 @@ export function useMobileWorkInventory(filters?: CloudWorkFilters): MobileWorkIn
 
   const inventory = useMemo(() => {
     const workspaceById = new Map(data.map((workspace) => [workspace.id, workspace]));
-    const groups = buildCloudWorkRecencyInventory(data, { filters }).map((group) => ({
-      view: group,
-      items: group.items.flatMap((item) => {
-        const workspace = workspaceById.get(item.id);
+    // buildCloudWorkRecencyInventory dedupes, filters, sorts, and shapes each
+    // workspace into a CloudWorkItemView; its own recency buckets
+    // (today/this_week/last_week/earlier) don't match the web workspaces-list
+    // this screen is parity-mapped to, so only the flattened, already-sorted
+    // item list is kept from it — grouping is redone by
+    // groupByMobileWorkRecency (mobile-work-recency.ts), whose buckets do
+    // match.
+    const items = buildCloudWorkRecencyInventory(data, { filters })
+      .flatMap((group) => group.items)
+      .flatMap((view) => {
+        const workspace = workspaceById.get(view.id);
         if (!workspace) {
           return [];
         }
         return [{
-          view: item,
+          view,
           workspace,
-          chat: mobileCloudChatForWorkspace(workspace, item),
+          chat: mobileCloudChatForWorkspace(workspace, view),
         }];
-      }),
-    }));
-    const items = groups.flatMap((group) => group.items);
+      });
+    const groups = groupByMobileWorkRecency(items, (item) => item.view.lastActivityMs).map(
+      (group) => ({ view: { id: group.id, label: group.label }, items: group.items }),
+    );
     const recentItems = [...items]
       .sort((left, right) => right.view.lastActivityMs - left.view.lastActivityMs)
       .slice(0, 5);
-    return { groups, items, recentItems };
+    const attentionCount = deriveMobileWorkAttentionCount(items.map((item) => item.view));
+    return { groups, items, recentItems, attentionCount };
   }, [data, filters]);
 
   return {
