@@ -32,6 +32,11 @@ export function cloudSessionProjectionFromAnyHarness(
     lastEventAt: session.updatedAt ?? session.lastPromptAt ?? session.createdAt ?? null,
     startedAt: session.createdAt ?? null,
     endedAt: null,
+    // Threaded through so `isMobileSessionRunning` can derive
+    // `hasPromptActivity` the same way Group D's
+    // `sessionActivitySnapshotFromSession` does (`Boolean(session.lastPromptAt)`)
+    // — see mobile-chat-composer-state.ts.
+    lastPromptAt: session.lastPromptAt ?? null,
   };
 }
 

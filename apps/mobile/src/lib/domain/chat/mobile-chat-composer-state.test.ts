@@ -136,6 +136,7 @@ describe("isMobileSessionRunning", () => {
     isStreaming: false,
     pendingInteractions: [],
     connectionState: "open" as const,
+    hasPromptActivity: true,
   };
 
   it("is not running for an idle session with nothing pending", () => {
@@ -177,5 +178,95 @@ describe("isMobileSessionRunning", () => {
       isStreaming: true,
       connectionState: "closed",
     })).toBe(false);
+  });
+
+  // Fix A (E2 Important, reviewer finding): a session that has entered the
+  // "starting" phase but has never had a prompt sent to it yet (no
+  // `lastPromptAt`, no attempted prompt) must read as idle, not running —
+  // matching web's `resolveSessionExecutionPhase`
+  // (`slot.executionSummary.phase === "starting" && slot.hasPromptActivity
+  // === false && !isSessionEffectivelyStreaming(slot)` -> "idle"). Before
+  // this fix, `hasPromptActivity` was never threaded into the snapshot, so
+  // this case fell through to `resolveSessionExecutionPhase`'s "legacy"
+  // (undefined) branch and read as running.
+  it("is not running for a starting session with no prompt activity yet, via executionSummary.phase", () => {
+    expect(isMobileSessionRunning({
+      ...base,
+      status: "starting" as never,
+      executionSummary: { phase: "starting" } as never,
+      hasPromptActivity: false,
+    })).toBe(false);
+  });
+
+  it("is not running for a starting session with no prompt activity yet, via status alone", () => {
+    expect(isMobileSessionRunning({
+      ...base,
+      status: "starting" as never,
+      executionSummary: null,
+      hasPromptActivity: false,
+    })).toBe(false);
+  });
+
+  it("is running once a starting session has prompt activity", () => {
+    expect(isMobileSessionRunning({
+      ...base,
+      status: "starting" as never,
+      executionSummary: { phase: "starting" } as never,
+      hasPromptActivity: true,
+    })).toBe(true);
+  });
+});
+
+describe("isMobileSessionRunning + deriveComposerAction (Fix A)", () => {
+  it("a starting session with no prompt activity composes as an idle send, not queue/stop", () => {
+    const isRunning = isMobileSessionRunning({
+      status: "starting" as never,
+      executionSummary: { phase: "starting" } as never,
+      isStreaming: false,
+      pendingInteractions: [],
+      connectionState: "open",
+      hasPromptActivity: false,
+    });
+    expect(isRunning).toBe(false);
+
+    expect(deriveComposerAction({
+      isRunning,
+      isEmpty: false,
+      isDisabled: false,
+      isEditingQueuedPrompt: false,
+    })).toEqual({ mode: "send", enabled: true, label: "Send message" });
+
+    expect(deriveComposerAction({
+      isRunning,
+      isEmpty: true,
+      isDisabled: false,
+      isEditingQueuedPrompt: false,
+    })).toEqual({ mode: "send", enabled: false, label: "Send message" });
+  });
+
+  it("once prompt activity begins, the same starting session composes as queue/stop", () => {
+    const isRunning = isMobileSessionRunning({
+      status: "starting" as never,
+      executionSummary: { phase: "starting" } as never,
+      isStreaming: false,
+      pendingInteractions: [],
+      connectionState: "open",
+      hasPromptActivity: true,
+    });
+    expect(isRunning).toBe(true);
+
+    expect(deriveComposerAction({
+      isRunning,
+      isEmpty: false,
+      isDisabled: false,
+      isEditingQueuedPrompt: false,
+    })).toEqual({ mode: "queue", enabled: true, label: "Send message to queue" });
+
+    expect(deriveComposerAction({
+      isRunning,
+      isEmpty: true,
+      isDisabled: false,
+      isEditingQueuedPrompt: false,
+    })).toEqual({ mode: "stop", enabled: true, label: "Stop run" });
   });
 });

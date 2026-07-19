@@ -271,6 +271,11 @@ export function MobileChatScreen({
     isStreaming: transcript.isStreaming,
     pendingInteractions: transcript.pendingInteractions,
     connectionState: transcriptConnectionState,
+    // Group D's `sessionActivitySnapshotFromSession` pattern
+    // (`Boolean(session.lastPromptAt)`) — without it a `"starting"` session
+    // with no prompt sent yet would read as running (see
+    // `isMobileSessionRunning`'s doc comment).
+    hasPromptActivity: Boolean(session?.lastPromptAt),
   });
   function openWorkspaceActionSheet(expandedId: string | null = null) {
     setActionSheetInitialExpandedId(expandedId);

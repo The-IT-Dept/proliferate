@@ -118,11 +118,23 @@ export function isMobileSessionRunning(input: {
   isStreaming: boolean;
   pendingInteractions: readonly MobilePendingInteractionLike[];
   connectionState: MobileStreamConnectionState;
+  /**
+   * Mirrors web's `activitySnapshotFromDirectoryEntry`
+   * (`entry.lastPromptAt !== null || entry.hasAttemptedPrompt`) and
+   * Group D's `sessionActivitySnapshotFromSession`
+   * (`Boolean(session.lastPromptAt)`) — without this,
+   * `resolveSessionExecutionPhase`'s `slot.hasPromptActivity === false`
+   * check never fires (the field defaults to `undefined`, which the
+   * resolver treats as "legacy behavior": always busy), so a `"starting"`
+   * session with no prompt sent yet reads as running instead of idle.
+   */
+  hasPromptActivity: boolean;
 }): boolean {
   return isSessionSlotBusy({
     status: input.status ?? null,
     executionSummary: input.executionSummary ?? null,
     streamConnectionState: mapStreamConnectionStateForActivity(input.connectionState),
+    hasPromptActivity: input.hasPromptActivity,
     transcript: {
       isStreaming: input.isStreaming,
       pendingInteractions: [...input.pendingInteractions],
