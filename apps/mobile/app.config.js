@@ -34,6 +34,24 @@ module.exports = ({ config }) => ({
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
+    entitlements: {
+      // expo-notifications' own iOS sub-plugin (withNotificationsIOS) only
+      // sets `aps-environment` when it's absent from the merged entitlements,
+      // so this explicit value wins over its `mode` option/default - keeping
+      // it here (rather than passed through the plugin config below) makes
+      // it visible/greppable next to the rest of the ios block.
+      //
+      // "development" matches the Development-signed dev-client build this
+      // feature needs first (`eas build --profile development` /
+      // `development-simulator` - both set `developmentClient: true`, which
+      // EAS signs with a Development provisioning profile). This MUST
+      // change to "production" (or be branched per EAS build profile, the
+      // way `IS_STAGING` branches bundle id) before a `production` /
+      // `staging` / `staging-testflight` (App Store/TestFlight) submission
+      // build: those sign with a Distribution profile, which requires the
+      // "production" APNs environment - Apple rejects a mismatched value.
+      "aps-environment": "development",
+    },
   },
   android: {
     package: BUNDLE_ID,
@@ -65,6 +83,23 @@ module.exports = ({ config }) => ({
     "expo-apple-authentication",
     "expo-localization",
     "expo-secure-store",
+    [
+      "expo-notifications",
+      {
+        // Android notification-tray tint; matches the dark splash/theme
+        // color used above. No custom small icon asset yet (falls back to
+        // the app icon) - a dedicated white/transparent notification icon
+        // is a follow-up design task, not required for delivery to work.
+        color: "#181818",
+        // Declared here (AndroidManifest default-channel meta-data) AND
+        // created at runtime (`Notifications.setNotificationChannelAsync`
+        // in `use-mobile-push-registration.ts`) - the manifest entry alone
+        // doesn't create the channel, Android 8+ requires the runtime call;
+        // this just tells the OS which channel id to fall back to for a
+        // notification that doesn't name one explicitly.
+        defaultChannel: "default",
+      },
+    ],
     [
       "expo-splash-screen",
       {
