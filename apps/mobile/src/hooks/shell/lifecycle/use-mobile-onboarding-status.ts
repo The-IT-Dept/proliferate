@@ -1,50 +1,39 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 import {
-  getMobileStorageItem,
-  setMobileStorageItem,
-} from "../../../lib/access/mobile-storage";
+  completeOnboardingStatus,
+  ensureOnboardingStatusLoaded,
+  getOnboardingStatusSnapshot,
+  subscribeOnboardingStatus,
+  type MobileOnboardingStatus,
+} from "./mobile-onboarding-status-store";
 
-const ONBOARDING_FLAG_KEY = "proliferate.mobile.onboarded.v1";
+export type { MobileOnboardingStatus };
 
-export type MobileOnboardingStatus = "checking" | "needed" | "done";
-
+/**
+ * Thin wrapper around the module-level onboarding-status store (see
+ * `mobile-onboarding-status-store.ts` for why a shared store, rather than
+ * per-instance `useState`, is required here). `useSyncExternalStore` is what
+ * makes `completeOnboarding()` called from one consumer (the onboarding
+ * route) immediately visible to every other mounted consumer (the root gate)
+ * in the same session - no extra plumbing needed between them.
+ */
 export function useMobileOnboardingStatus(authState: string): {
   completeOnboarding: () => Promise<void>;
   onboardingStatus: MobileOnboardingStatus;
 } {
-  const [onboardingStatus, setOnboardingStatus] = useState<MobileOnboardingStatus>("checking");
-
   useEffect(() => {
-    if (authState !== "active") {
-      setOnboardingStatus("checking");
-      return;
-    }
-    let cancelled = false;
-    void getMobileStorageItem(ONBOARDING_FLAG_KEY)
-      .then((value) => {
-        if (cancelled) {
-          return;
-        }
-        setOnboardingStatus(value === "true" ? "done" : "needed");
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setOnboardingStatus("needed");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    ensureOnboardingStatusLoaded(authState);
   }, [authState]);
 
+  const onboardingStatus = useSyncExternalStore(
+    subscribeOnboardingStatus,
+    getOnboardingStatusSnapshot,
+    getOnboardingStatusSnapshot,
+  );
+
   const completeOnboarding = useCallback(async () => {
-    try {
-      await setMobileStorageItem(ONBOARDING_FLAG_KEY, "true");
-    } catch {
-      // best effort
-    }
-    setOnboardingStatus("done");
+    await completeOnboardingStatus();
   }, []);
 
   return { completeOnboarding, onboardingStatus };
