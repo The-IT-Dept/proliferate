@@ -67,6 +67,15 @@ export function MobileLiveTranscriptList({
   // same workspace) clears the latch naturally since the comparison is
   // against its own value, not a boolean.
   const focusedRequestIdRef = useRef<string | null>(null);
+  // Mirrors `rows` for the `onScrollToIndexFailed` retry's `setTimeout`
+  // below, which reads it 50ms after the failure. A plain closure over
+  // `rows` would only see the count as of the failure, not as of the retry —
+  // and the deep-linked pending-interaction card is appended last and
+  // removed the instant it's resolved/superseded, so `rows` can shrink
+  // within that window. Kept in sync unconditionally every render (no
+  // `useEffect`) so the retry always reads the true current count.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   useEffect(() => {
     if (!focusRequestId || focusedRequestIdRef.current === focusRequestId) {
@@ -111,7 +120,19 @@ export function MobileLiveTranscriptList({
           animated: false,
         });
         setTimeout(() => {
-          listRef.current?.scrollToIndex({ index: info.index, animated: true });
+          // `scrollToIndex` throws a synchronous invariant when
+          // `index >= getItemCount(data)` (or the list is now empty) —
+          // bounds-check against the current row count (see `rowsRef`
+          // above) and swallow the throw defensively, mirroring the
+          // primary `scrollToIndex` call's try/catch above.
+          if (info.index >= rowsRef.current.length) {
+            return;
+          }
+          try {
+            listRef.current?.scrollToIndex({ index: info.index, animated: true });
+          } catch {
+            // Best-effort — see the primary scrollToIndex catch above.
+          }
         }, 50);
       }}
       ListEmptyComponent={
