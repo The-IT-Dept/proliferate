@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUnifiedDiff } from "./mobile-diff-parser";
+import { capDiffLines, parseUnifiedDiff } from "./mobile-diff-parser";
 
 describe("parseUnifiedDiff", () => {
   it("returns no hunks for a null/undefined/empty patch", () => {
@@ -243,5 +243,78 @@ describe("parseUnifiedDiff", () => {
       { kind: "del", content: "alpha", oldLineNo: 1, newLineNo: null },
       { kind: "del", content: "beta", oldLineNo: 2, newLineNo: null },
     ]);
+  });
+});
+
+// I1 — capDiffLines: the pure hard-cap helper behind MobileDiffViewer's
+// unvirtualized rendering guard.
+describe("capDiffLines", () => {
+  function hunkWithLines(count: number, prefix = "h"): ReturnType<typeof parseUnifiedDiff>["hunks"][number] {
+    const header = `@@ -1,${count} +1,${count} @@`;
+    const body = Array.from({ length: count }, (_, i) => ` ${prefix}${i}`);
+    return parseUnifiedDiff([header, ...body].join("\n")).hunks[0]!;
+  }
+
+  it("does not cap when total lines are within max", () => {
+    const parsed = parseUnifiedDiff(["@@ -1,2 +1,2 @@", " a", " b"].join("\n"));
+    const result = capDiffLines(parsed, 2000);
+
+    expect(result).toEqual({ lines: parsed.hunks, shown: 2, total: 2, capped: false });
+  });
+
+  it("caps at exactly max when total equals max (not capped)", () => {
+    const parsed = { hunks: [hunkWithLines(5)] };
+    const result = capDiffLines(parsed, 5);
+
+    expect(result.capped).toBe(false);
+    expect(result.shown).toBe(5);
+    expect(result.total).toBe(5);
+  });
+
+  it("keeps whole hunks and truncates only the hunk straddling the boundary", () => {
+    const first = hunkWithLines(3, "a");
+    const second = hunkWithLines(3, "b");
+    const parsed = { hunks: [first, second] };
+
+    const result = capDiffLines(parsed, 4);
+
+    expect(result.capped).toBe(true);
+    expect(result.shown).toBe(4);
+    expect(result.total).toBe(6);
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines[0]).toEqual(first);
+    expect(result.lines[1]!.lines).toHaveLength(1);
+    expect(result.lines[1]!.lines[0]!.content).toBe("b0");
+    // Truncated hunk keeps its header/range metadata, only `lines` shrinks.
+    expect(result.lines[1]!.header).toBe(second.header);
+    expect(result.lines[1]!.oldStart).toBe(second.oldStart);
+  });
+
+  it("drops hunks entirely once the cap is exhausted", () => {
+    const first = hunkWithLines(4, "a");
+    const second = hunkWithLines(4, "b");
+    const parsed = { hunks: [first, second] };
+
+    const result = capDiffLines(parsed, 4);
+
+    expect(result.lines).toEqual([first]);
+    expect(result.shown).toBe(4);
+    expect(result.total).toBe(8);
+    expect(result.capped).toBe(true);
+  });
+
+  it("returns an empty result for a zero cap on a non-empty diff", () => {
+    const parsed = { hunks: [hunkWithLines(3)] };
+    const result = capDiffLines(parsed, 0);
+
+    expect(result.lines).toEqual([]);
+    expect(result.shown).toBe(0);
+    expect(result.total).toBe(3);
+    expect(result.capped).toBe(true);
+  });
+
+  it("handles an empty diff", () => {
+    const result = capDiffLines({ hunks: [] }, 2000);
+    expect(result).toEqual({ lines: [], shown: 0, total: 0, capped: false });
   });
 });

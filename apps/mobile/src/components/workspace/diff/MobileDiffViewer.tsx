@@ -1,6 +1,13 @@
+import { useMemo } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
-import type { DiffLine, DiffLineKind, ParsedDiff } from "../../../lib/domain/workspace/mobile-diff-parser";
+import {
+  capDiffLines,
+  MAX_RENDERED_DIFF_LINES,
+  type DiffLine,
+  type DiffLineKind,
+  type ParsedDiff,
+} from "../../../lib/domain/workspace/mobile-diff-parser";
 import { colors, radius, spacing } from "../../../styles/tokens";
 
 interface MobileDiffViewerProps {
@@ -61,8 +68,23 @@ const LINE_MARKER: Record<DiffLineKind, string> = {
  * No numeric line-number gutter — mockup H's own diff card shows none; the
  * marker glyph (+/-/space) IS the "gutter glyph (never color alone)" the
  * caption calls for, so color is never the only signal for add/remove.
+ *
+ * I1 — no virtualization: every rendered line is a `View`+`Text` inside the
+ * segment's outer `ScrollView`, and virtualizing here is awkward (nested in
+ * a parent ScrollView). Instead this applies a hard client-side cap via the
+ * pure `capDiffLines` helper (`mobile-diff-parser.ts`) — at most
+ * `MAX_RENDERED_DIFF_LINES` diff-content lines get mounted, with an explicit
+ * cutoff notice below the last rendered hunk when the parsed diff exceeds
+ * it. This is separate from (and can appear alongside) the server-side
+ * `GitDiffResponse.truncated` note the parent segment already shows for
+ * patches AnyHarness itself truncated before ever reaching the client.
  */
 export function MobileDiffViewer({ fileName, parsedDiff }: MobileDiffViewerProps) {
+  const capped = useMemo(
+    () => capDiffLines(parsedDiff, MAX_RENDERED_DIFF_LINES),
+    [parsedDiff],
+  );
+
   return (
     <View style={styles.root}>
       <View style={styles.headerRow}>
@@ -75,7 +97,7 @@ export function MobileDiffViewer({ fileName, parsedDiff }: MobileDiffViewerProps
       {parsedDiff.hunks.length === 0 ? (
         <Text style={styles.emptyText}>No textual changes to show.</Text>
       ) : (
-        parsedDiff.hunks.map((hunk, hunkIndex) => (
+        capped.lines.map((hunk, hunkIndex) => (
           <View key={hunkIndex}>
             <Text style={styles.hunkHeader} numberOfLines={1}>
               {hunk.header}
@@ -86,6 +108,12 @@ export function MobileDiffViewer({ fileName, parsedDiff }: MobileDiffViewerProps
           </View>
         ))
       )}
+
+      {capped.capped ? (
+        <Text style={styles.cutoffText}>
+          {`Diff too large to display fully — ${capped.shown} of ${capped.total} lines shown`}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -138,6 +166,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     paddingHorizontal: spacing[3] + 2,
     paddingBottom: spacing[2],
+  },
+  cutoffText: {
+    color: META_FG,
+    fontFamily: MONO_FONT,
+    fontSize: 11,
+    fontStyle: "italic",
+    paddingHorizontal: spacing[3] + 2,
+    paddingTop: spacing[1],
   },
   hunkHeader: {
     color: HUNK_HEADER_FG,

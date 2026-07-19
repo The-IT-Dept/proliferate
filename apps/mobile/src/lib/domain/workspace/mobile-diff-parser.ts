@@ -171,3 +171,57 @@ export function parseUnifiedDiff(patch: string | null | undefined): ParsedDiff {
 
   return { hunks };
 }
+
+/** Default hard cap for `capDiffLines` — see its doc comment for why. */
+export const MAX_RENDERED_DIFF_LINES = 2000;
+
+export interface CappedDiff {
+  /** Hunks trimmed so their combined `lines` total never exceeds `shown`. */
+  lines: DiffHunk[];
+  /** Total diff-content lines actually included in `lines`. */
+  shown: number;
+  /** Total diff-content lines across every hunk of the source `ParsedDiff`. */
+  total: number;
+  /** True when `total > max` and the output was truncated. */
+  capped: boolean;
+}
+
+/**
+ * Group G — a hard client-side cap on how many diff-content lines
+ * `MobileDiffViewer` mounts. The renderer maps every hunk line to a
+ * `View`+`Text` inside the segment's outer `ScrollView` with no
+ * virtualization (virtualizing is awkward nested in a parent ScrollView), so
+ * a large — even server-`truncated` — diff would otherwise mount hundreds to
+ * thousands of Views and cause jank/memory pressure. This caps the *count*
+ * of `DiffLine`s across all hunks at `max`, keeping whole hunks where
+ * possible and truncating the hunk that straddles the boundary; hunk headers
+ * for included hunks are always kept (they aren't counted against `max`,
+ * matching the "N total diff LINES" contract, not "N rows").
+ *
+ * Pure and device-independent by design so the cap boundary is unit
+ * testable — `MobileDiffViewer` just calls this with `parsedDiff` and
+ * renders `lines`/`capped`/`shown`/`total` from the result.
+ */
+export function capDiffLines(parsed: ParsedDiff, max: number): CappedDiff {
+  const total = parsed.hunks.reduce((sum, hunk) => sum + hunk.lines.length, 0);
+  if (total <= max) {
+    return { lines: parsed.hunks, shown: total, total, capped: false };
+  }
+
+  const lines: DiffHunk[] = [];
+  let remaining = max;
+  for (const hunk of parsed.hunks) {
+    if (remaining <= 0) {
+      break;
+    }
+    if (hunk.lines.length <= remaining) {
+      lines.push(hunk);
+      remaining -= hunk.lines.length;
+    } else {
+      lines.push({ ...hunk, lines: hunk.lines.slice(0, remaining) });
+      remaining = 0;
+    }
+  }
+
+  return { lines, shown: max, total, capped: true };
+}
