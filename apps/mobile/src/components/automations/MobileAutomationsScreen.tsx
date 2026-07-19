@@ -4,6 +4,7 @@ import { useAutomationActions } from "@proliferate/cloud-sdk-react";
 import type { AutomationInventoryItemView } from "@proliferate/product-domain/automations/inventory";
 
 import { useMobileAutomationInventory } from "../../hooks/automations/derived/use-mobile-automation-inventory";
+import { mobileAutomationErrorSuffix } from "../../lib/domain/automations/mobile-automation-error-suffix";
 import { useMobileToast } from "../../providers/MobileToastProvider";
 import { MobileIcon } from "../primitives/MobileIcon";
 import { MobileListRow } from "../primitives/MobileListRow";
@@ -39,7 +40,7 @@ export function MobileAutomationsScreen({ onOpenAutomation }: MobileAutomationsS
     } catch (error) {
       toast.show({
         tone: "error",
-        message: `Couldn't ${item.enabled ? "pause" : "resume"} "${item.title}"${errorSuffix(error)}`,
+        message: `Couldn't ${item.enabled ? "pause" : "resume"} "${item.title}"${mobileAutomationErrorSuffix(error)}`,
       });
     } finally {
       setTogglingAutomationId(null);
@@ -107,10 +108,6 @@ export function MobileAutomationsScreen({ onOpenAutomation }: MobileAutomationsS
       </Text>
     </MobileScreen>
   );
-}
-
-function errorSuffix(error: unknown): string {
-  return error instanceof Error && error.message ? `: ${error.message}` : ".";
 }
 
 function AutomationRow({

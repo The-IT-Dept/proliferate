@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useAutomationActions } from "@proliferate/cloud-sdk-react";
 
 import { useMobileAutomationDetail } from "../../hooks/automations/derived/use-mobile-automation-detail";
+import { mobileAutomationErrorSuffix } from "../../lib/domain/automations/mobile-automation-error-suffix";
 import { mobileAutomationStatusDotTone } from "../../lib/domain/automations/mobile-automation-status-dot";
 import { useMobileToast } from "../../providers/MobileToastProvider";
 import { MobileListRow } from "../primitives/MobileListRow";
@@ -35,7 +36,7 @@ export function MobileAutomationDetailScreen({ automationId }: MobileAutomationD
       await actions.runAutomationNow(automationId);
       toast.show({ tone: "success", message: "Run queued." });
     } catch (error) {
-      toast.show({ tone: "error", message: `Couldn't queue a run${errorSuffix(error)}` });
+      toast.show({ tone: "error", message: `Couldn't queue a run${mobileAutomationErrorSuffix(error)}` });
     }
   }
 
@@ -50,7 +51,7 @@ export function MobileAutomationDetailScreen({ automationId }: MobileAutomationD
     } catch (error) {
       toast.show({
         tone: "error",
-        message: `Couldn't ${detail.item.enabled ? "pause" : "resume"} this automation${errorSuffix(error)}`,
+        message: `Couldn't ${detail.item.enabled ? "pause" : "resume"} this automation${mobileAutomationErrorSuffix(error)}`,
       });
     }
   }
@@ -136,10 +137,6 @@ export function MobileAutomationDetailScreen({ automationId }: MobileAutomationD
       )}
     </MobileScreen>
   );
-}
-
-function errorSuffix(error: unknown): string {
-  return error instanceof Error && error.message ? `: ${error.message}` : ".";
 }
 
 function ActionButton({
