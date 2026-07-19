@@ -2,7 +2,9 @@ import type {
   AssistantProseItem,
   ContentPart,
   ErrorItem,
+  McpElicitationInteractionPayload,
   PendingInteraction,
+  PermissionInteractionOption,
   PlanEntry,
   PlanItem,
   ProposedPlanItem,
@@ -10,13 +12,14 @@ import type {
   ToolCallItem,
   TranscriptItem,
   TranscriptState,
+  UserInputQuestion,
   UserMessageItem,
 } from "@anyharness/sdk";
 import { selectPrimaryPendingInteraction } from "@anyharness/sdk";
 import { describeToolCallDisplay } from "@proliferate/product-domain/chats/tools/tool-call-display";
 
 /**
- * Group E1 — the live transcript's pure `TranscriptItem`/`ContentPart` ->
+ * Group E1/E3 — the live transcript's pure `TranscriptItem`/`ContentPart` ->
  * view-model mapping. This is the render-agnostic half of "render the
  * transcript": `MobileLiveTranscriptRow` (the RN component) turns each of
  * these into JSX; this module has no RN/React import so it's testable in
@@ -36,14 +39,26 @@ import { describeToolCallDisplay } from "@proliferate/product-domain/chats/tools
  * `@proliferate/product-domain` — the same label logic the web client's
  * transcript rows use — so tool names aren't reinvented here.
  *
- * Interaction handling is explicitly NOT built here (E3's job). When there's
- * a pending interaction that isn't already visible as a tool call's
- * `approvalState` badge (i.e. a `user_input`/`mcp_elicitation` request, or a
- * permission request with no associated tool call), this module appends a
- * single, non-interactive `pending_interaction` placeholder row — no
- * buttons, no card, just "there's something waiting on you". E3 replaces
- * that placeholder with the real permission/user_input/mcp_elicitation
- * cards.
+ * A `proposed_plan` decision (approve/reject a proposed plan) is NOT
+ * modeled here as an interaction card, on purpose: the reducer
+ * (`anyharness/sdk/src/reducer/transcript.ts`, `isPlanOwnedInteraction`)
+ * excludes any permission interaction with a `linkedPlanId` (or tied to a
+ * tool call backing a still-pending `proposed_plan` item) from
+ * `selectPrimaryPendingInteraction`/`selectPendingApprovalInteraction` —
+ * plan decisions are the `proposed_plan` transcript item's own concern
+ * (`ProposedPlanRow` below, via its `decisionState`), not a generic
+ * interaction card. Nothing here needs to special-case it.
+ *
+ * E3 — when there's a pending interaction that isn't already visible as a
+ * tool call's `approvalState` badge (a `permission` request not tied to a
+ * tool call, or any `user_input`/`mcp_elicitation` request), this module
+ * appends one real interaction-card row for it: `permission_interaction`,
+ * `user_input_interaction`, or `mcp_elicitation_interaction` (one at a
+ * time, per `selectPrimaryPendingInteraction` — mirrors the web client's
+ * single composer-dock interaction slot, `useComposerDockSlots`). Each row
+ * carries the interaction's own `requestId` directly (not just encoded in
+ * `id`) so a push deep-link (`proliferate://workspace/{id}?interaction=
+ * {requestId}`) can find and focus the exact row.
  */
 
 export type TranscriptRowViewModel =
@@ -54,7 +69,9 @@ export type TranscriptRowViewModel =
   | PlanRow
   | ProposedPlanRow
   | ErrorRow
-  | PendingInteractionPlaceholderRow;
+  | PermissionInteractionRow
+  | UserInputInteractionRow
+  | McpElicitationInteractionRow;
 
 interface RowBase {
   id: string;
@@ -106,15 +123,45 @@ export interface ErrorRow extends RowBase {
   code: string | null;
 }
 
-/** Synthetic — not a `TranscriptItem` kind. See module doc: minimal,
- * non-interactive; E3 replaces this with the real interaction cards. */
-export interface PendingInteractionPlaceholderRow {
+/**
+ * Synthetic — not a `TranscriptItem` kind. Card header is the fixed string
+ * "Permission request" (rendered by the card component, not carried here);
+ * `title` is the request *body* — matches web's `ApprovalCard`, whose
+ * `ComposerAttachedPanel title="Permission request"` header is a constant
+ * and whose `title` prop (the interaction's `PendingApproval.title`) is
+ * the mono-snippet body instead.
+ */
+export interface PermissionInteractionRow {
   id: string;
   turnId: string | null;
-  kind: "pending_interaction";
-  interactionKind: PendingInteraction["kind"];
+  kind: "permission_interaction";
+  requestId: string;
   title: string;
-  description: string | null;
+  options: PermissionInteractionOption[];
+}
+
+/** Synthetic — not a `TranscriptItem` kind. `title` is the card header
+ * (matches web's `ConnectedUserInputCard`, `title={held.title}`); each
+ * `UserInputQuestion` carries its own `header`/`question`/`options`. */
+export interface UserInputInteractionRow {
+  id: string;
+  turnId: string | null;
+  kind: "user_input_interaction";
+  requestId: string;
+  title: string;
+  questions: UserInputQuestion[];
+}
+
+/** Synthetic — not a `TranscriptItem` kind. `title` is the card header
+ * (matches web's `ConnectedMcpElicitationCard`); `payload.serverName` is
+ * the card's trailing context, `payload.mode` selects url vs form body. */
+export interface McpElicitationInteractionRow {
+  id: string;
+  turnId: string | null;
+  kind: "mcp_elicitation_interaction";
+  requestId: string;
+  title: string;
+  payload: McpElicitationInteractionPayload;
 }
 
 const MAX_PREVIEW_LENGTH = 2_000;
@@ -140,16 +187,14 @@ export function buildLiveTranscriptRows(
     }
   }
 
-  // One placeholder for the primary pending interaction, full stop — not
-  // special-cased per interaction kind. The tool_call row still carries
-  // `approvalState` as data (useful, and truthful), but this module doesn't
-  // invent unverified badge copy ("Pending approval" etc. don't appear
-  // anywhere in the web client's tool row) to justify skipping the
-  // placeholder for a permission tied to a tool call. One predictable seam
-  // for E3 to replace with the real cards, instead of two.
+  // One interaction-card row for the primary pending interaction, full
+  // stop — mirrors the web client's single composer-dock interaction slot
+  // (`useComposerDockSlots`/`selectPrimaryPendingInteraction`), not
+  // multiple simultaneous cards. The tool_call row still carries
+  // `approvalState` as data (useful, and truthful) independent of this.
   const pending = selectPrimaryPendingInteraction(transcript);
   if (pending) {
-    rows.push(pendingInteractionPlaceholderRow(pending));
+    rows.push(pendingInteractionRow(pending));
   }
 
   return rows;
@@ -345,15 +390,42 @@ function previewText(value: string): string | null {
     : `${trimmed.slice(0, MAX_PREVIEW_LENGTH).trimEnd()}\n...`;
 }
 
-function pendingInteractionPlaceholderRow(
+function pendingInteractionRow(
   interaction: PendingInteraction,
-): PendingInteractionPlaceholderRow {
-  return {
-    id: `pending-interaction:${interaction.requestId}`,
-    turnId: null,
-    kind: "pending_interaction",
-    interactionKind: interaction.kind,
-    title: interaction.title,
-    description: interaction.description,
-  };
+): PermissionInteractionRow | UserInputInteractionRow | McpElicitationInteractionRow {
+  // Stable, requestId-derived id (unchanged prefix from E1) — this is what
+  // a future push deep-link handler (`proliferate://workspace/{id}
+  // ?interaction={requestId}`) resolves against to scroll/focus the row;
+  // `requestId` is also carried as its own field so a handler doesn't need
+  // to parse it back out of `id`.
+  const id = `pending-interaction:${interaction.requestId}`;
+  switch (interaction.kind) {
+    case "permission":
+      return {
+        id,
+        turnId: null,
+        kind: "permission_interaction",
+        requestId: interaction.requestId,
+        title: interaction.title,
+        options: interaction.options,
+      };
+    case "user_input":
+      return {
+        id,
+        turnId: null,
+        kind: "user_input_interaction",
+        requestId: interaction.requestId,
+        title: interaction.title,
+        questions: interaction.questions,
+      };
+    case "mcp_elicitation":
+      return {
+        id,
+        turnId: null,
+        kind: "mcp_elicitation_interaction",
+        requestId: interaction.requestId,
+        title: interaction.title,
+        payload: interaction.mcpElicitation,
+      };
+  }
 }

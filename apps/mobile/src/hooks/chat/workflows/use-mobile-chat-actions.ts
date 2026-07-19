@@ -1,6 +1,5 @@
 import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type {
-  CloudPendingInteraction,
   CloudSessionProjection,
   CloudTranscriptItem,
   CloudWorkspaceDetail,
@@ -26,7 +25,6 @@ import {
   isMobileCloudSandboxWorkspace,
 } from "../../../lib/access/anyharness/cloud-sandbox-runtime";
 import type { OptimisticPrompt } from "../../../lib/domain/chat/mobile-chat-transcript";
-import type { PermissionInteractionOption } from "../../../lib/domain/chat/mobile-chat-permissions";
 import { buildMobileChatComposerControlsModel } from "../../../lib/domain/chat/mobile-chat-composer-controls";
 import { useMobileCloudAgentResources } from "../../access/cloud/agents/use-mobile-cloud-agent-resources";
 import { useMobileCloudWorkspaceCache } from "../../access/cloud/workspaces/use-mobile-cloud-workspace-cache";
@@ -56,9 +54,6 @@ export function useMobileChatActions({
   setPendingConfigChanges,
   setSelectedSessionId,
   setNewSessionMode,
-  setPermissionResolveError,
-  setResolvingPermissionKey,
-  setToolDetailRow,
   onSessionSelected,
   closeWorkspaceActionSheet,
   workspaceRefetch,
@@ -88,9 +83,6 @@ export function useMobileChatActions({
   setPendingConfigChanges: Dispatch<SetStateAction<Record<string, PendingConfigChange>>>;
   setSelectedSessionId: Dispatch<SetStateAction<string | null>>;
   setNewSessionMode: Dispatch<SetStateAction<boolean>>;
-  setPermissionResolveError: Dispatch<SetStateAction<string | null>>;
-  setResolvingPermissionKey: Dispatch<SetStateAction<string | null>>;
-  setToolDetailRow: Dispatch<SetStateAction<CloudChatTranscriptRowView | null>>;
   onSessionSelected?: (sessionId: string) => void;
   closeWorkspaceActionSheet: () => void;
   workspaceRefetch: () => void | Promise<unknown>;
@@ -208,52 +200,13 @@ export function useMobileChatActions({
     }
   }
 
-  async function resolvePermissionInteraction(
-    interaction: CloudPendingInteraction,
-    option: PermissionInteractionOption,
-  ) {
-    if (!workspace || !session) {
-      setPermissionResolveError("Session is still loading. Try again in a moment.");
-      return;
-    }
-    if (isUnclaimed) {
-      setPermissionResolveError("Claim this workspace before approving commands from mobile.");
-      return;
-    }
-    if (!isMobileCloudSandboxWorkspace(workspace)) {
-      setPermissionResolveError("Cloud workspace runtime is unavailable.");
-      return;
-    }
-    const key = `${interaction.requestId}:${option.optionId}`;
-    setResolvingPermissionKey(key);
-    setPermissionResolveError(null);
-    try {
-      const { anyharness } = await getMobileCloudSandboxAnyHarnessClient({
-        workspace,
-        productToken,
-        client,
-      });
-      await anyharness.sessions.resolveInteraction(
-        session.sessionId,
-        interaction.requestId,
-        {
-          outcome: "selected",
-          optionId: option.optionId,
-        },
-      );
-      setPendingPromptStatus(null);
-      setToolDetailRow(null);
-      void transcriptRefetch();
-      void sessionEventsRefetch();
-      void workspaceRefetch();
-    } catch (error) {
-      setPermissionResolveError(
-        error instanceof Error ? error.message : "Permission response could not be sent.",
-      );
-    } finally {
-      setResolvingPermissionKey((current) => current === key ? null : current);
-    }
-  }
+  // Permission resolution moved to `useMobileChatInteractionActions` (E3 —
+  // the I2 collapse): the real `useResolveSessionInteractionMutation`
+  // (`@anyharness/sdk-react`) instead of this hand-rolled
+  // `anyharness.sessions.resolveInteraction(...)` call, driven by the
+  // inline transcript cards instead of the now-deleted permission
+  // auto-open sheet (`use-mobile-chat-permission-sheet.ts`) and
+  // `MobileChatToolDetailSheet`.
 
   async function claimChat(): Promise<boolean> {
     return false;
@@ -305,7 +258,6 @@ export function useMobileChatActions({
     promptSubmitting,
     submitPrompt,
     submitSessionConfig,
-    resolvePermissionInteraction,
     claimChat,
     startNewSession,
     selectSession,

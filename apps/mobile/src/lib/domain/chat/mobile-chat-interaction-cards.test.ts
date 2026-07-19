@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   McpElicitationField,
-  PendingApproval,
+  PermissionInteractionOption,
   UserInputQuestion,
 } from "@anyharness/sdk";
 
@@ -17,31 +17,14 @@ import {
   userInputQuestionOptions,
 } from "./mobile-chat-interaction-cards";
 
-function approval(overrides: Partial<PendingApproval> = {}): PendingApproval {
-  return {
-    kind: "permission",
-    requestId: "req-1",
-    toolCallId: "tool-1",
-    toolKind: "execute",
-    toolStatus: "pending",
-    linkedPlanId: null,
-    title: "pnpm db:migrate --env staging",
-    description: null,
-    options: [],
-    ...overrides,
-  };
-}
-
 describe("permissionCardOptions", () => {
   it("maps the harness-provided options verbatim, resolving via selected", () => {
-    const interaction = approval({
-      options: [
-        { optionId: "allow_once", label: "Allow", kind: "allow_once" },
-        { optionId: "allow_session", label: "Allow for this session", kind: "allow_always" },
-        { optionId: "reject_once", label: "Deny", kind: "reject_once" },
-      ],
-    });
-    const options = permissionCardOptions(interaction);
+    const harnessOptions: PermissionInteractionOption[] = [
+      { optionId: "allow_once", label: "Allow", kind: "allow_once" },
+      { optionId: "allow_session", label: "Allow for this session", kind: "allow_always" },
+      { optionId: "reject_once", label: "Deny", kind: "reject_once" },
+    ];
+    const options = permissionCardOptions(harnessOptions);
     expect(options).toEqual([
       { key: "allow_once", label: "Allow", destructive: false, resolve: "selected", optionId: "allow_once", decision: undefined },
       { key: "allow_session", label: "Allow for this session", destructive: false, resolve: "selected", optionId: "allow_session", decision: undefined },
@@ -50,7 +33,7 @@ describe("permissionCardOptions", () => {
   });
 
   it("falls back to Allow/Deny via the decision outcome when the harness sends no options", () => {
-    const options = permissionCardOptions(approval({ options: [] }));
+    const options = permissionCardOptions([]);
     expect(options).toEqual([
       { key: "allow", label: "Allow", destructive: false, resolve: "decision", optionId: undefined, decision: "allow" },
       { key: "deny", label: "Deny", destructive: true, resolve: "decision", optionId: undefined, decision: "deny" },

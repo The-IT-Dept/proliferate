@@ -5,6 +5,7 @@ import {
   ASSISTANT_ITEM_ID,
   CANNED_SESSION_ENVELOPES,
   ERROR_EVENT_ENVELOPE,
+  PERMISSION_REQUEST_ID,
   PLAN_ITEM_ENVELOPE,
   PLAN_ITEM_ID,
   PROPOSED_PLAN_ITEM_ENVELOPE,
@@ -15,6 +16,7 @@ import {
   TOOL_CALL_ITEM_ID,
   UNKNOWN_ITEM_ENVELOPE,
   UNKNOWN_ITEM_ID,
+  USER_INPUT_REQUEST_ID,
   USER_INPUT_REQUESTED_ENVELOPE,
   USER_MESSAGE_ITEM_ID,
 } from "../../../hooks/chat/derived/__fixtures__/session-transcript-fixtures";
@@ -62,13 +64,17 @@ describe("buildLiveTranscriptRows — canned turn", () => {
     expect(row.summaryLines).toContain("5 passed");
   });
 
-  it("does not append a pending-interaction placeholder once resolved", () => {
-    expect(rows.some((row) => row.kind === "pending_interaction")).toBe(false);
+  it("does not append an interaction card row once resolved", () => {
+    expect(rows.some((row) =>
+      row.kind === "permission_interaction"
+      || row.kind === "user_input_interaction"
+      || row.kind === "mcp_elicitation_interaction"
+    )).toBe(false);
   });
 });
 
-describe("buildLiveTranscriptRows — pending interaction placeholder", () => {
-  it("appends one placeholder for a permission interaction tied to a tool call, alongside its pending tool_call row", () => {
+describe("buildLiveTranscriptRows — pending interaction cards", () => {
+  it("appends a permission_interaction row for a permission tied to a tool call, alongside its pending tool_call row", () => {
     const upToRequest = CANNED_SESSION_ENVELOPES.slice(0, 9); // through interaction_requested
     const transcript = reduceEvents(upToRequest, SESSION_ID);
     const rows = buildLiveTranscriptRows(transcript);
@@ -78,25 +84,39 @@ describe("buildLiveTranscriptRows — pending interaction placeholder", () => {
     if (toolRow?.kind === "tool_call") {
       expect(toolRow.approvalState).toBe("pending");
     }
-    const placeholder = rows.at(-1);
-    expect(placeholder?.kind).toBe("pending_interaction");
-    if (placeholder?.kind === "pending_interaction") {
-      expect(placeholder.interactionKind).toBe("permission");
-      expect(placeholder.title).toBe("Allow running tests?");
+    const card = rows.at(-1);
+    expect(card?.kind).toBe("permission_interaction");
+    if (card?.kind === "permission_interaction") {
+      expect(card.requestId).toBe(PERMISSION_REQUEST_ID);
+      expect(card.id).toBe(`pending-interaction:${PERMISSION_REQUEST_ID}`);
+      expect(card.title).toBe("Allow running tests?");
+      expect(card.options).toEqual([
+        { optionId: "allow_once", label: "Allow", kind: "allow_once" },
+        { optionId: "reject_once", label: "Deny", kind: "reject_once" },
+      ]);
     }
   });
 
-  it("appends a minimal, non-interactive placeholder for a user_input interaction with no tool call", () => {
+  it("appends a user_input_interaction row for a user_input interaction with no tool call", () => {
     const transcript = reduceEvents(
       [...CANNED_SESSION_ENVELOPES, USER_INPUT_REQUESTED_ENVELOPE],
       SESSION_ID,
     );
     const rows = buildLiveTranscriptRows(transcript);
-    const placeholder = rows.at(-1);
-    expect(placeholder?.kind).toBe("pending_interaction");
-    if (placeholder?.kind === "pending_interaction") {
-      expect(placeholder.interactionKind).toBe("user_input");
-      expect(placeholder.title).toBe("What should the new endpoint be called?");
+    const card = rows.at(-1);
+    expect(card?.kind).toBe("user_input_interaction");
+    if (card?.kind === "user_input_interaction") {
+      expect(card.requestId).toBe(USER_INPUT_REQUEST_ID);
+      expect(card.title).toBe("What should the new endpoint be called?");
+      expect(card.questions).toEqual([
+        {
+          questionId: "q1",
+          question: "Endpoint name?",
+          header: "Naming",
+          isOther: false,
+          isSecret: false,
+        },
+      ]);
     }
   });
 });

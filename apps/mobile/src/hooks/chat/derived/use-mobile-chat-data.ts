@@ -24,7 +24,6 @@ import {
   type OptimisticPrompt,
   buildOptimisticPromptRows,
   buildPendingPromptRows,
-  latestPendingPromptCommandId,
   optimisticPromptFromPending,
 } from "../../../lib/domain/chat/mobile-chat-transcript";
 import {
@@ -65,10 +64,25 @@ const EMPTY_TRANSCRIPT_ITEMS: CloudTranscriptItem[] = [];
  *
  * The live envelope log the stream accumulates still feeds
  * `buildCloudTranscriptView` (the existing `@proliferate/product-domain`
- * "Cloud" row/pending-prompt projection) so the composer, permission
- * auto-open sheet, and pending-prompt queue (E2's territory) keep working
- * unchanged off the same live data — this hook's return shape is otherwise
- * unchanged from before this rework.
+ * "Cloud" row/pending-prompt projection) — but only for what's left of it
+ * after E3's I2 collapse: optimistic-prompt visibility/seq matching
+ * (`pendingPromptTranscriptState`, `latestCloudTranscriptSeq` in
+ * `use-mobile-chat-prompt-actions.ts`) and two small display checks in
+ * `MobileChatScreen` (the loading-status footer's transcript-dedup check,
+ * and the empty-state title). Interaction display used to run through this
+ * same projection too (`pendingInteractions` -> `pendingPermissionByRequestId`
+ * -> the auto-open permission sheet, `use-mobile-chat-permission-sheet.ts`)
+ * in parallel with E1's SDK-reducer-driven placeholder row — two systems
+ * computing pending-interaction state from the same events through two
+ * different paths. E3 retired that duplication: `MobileChatToolDetailSheet`
+ * and the permission-sheet hook are deleted, and every interaction card
+ * (permission/user_input/mcp_elicitation) now reads and resolves off
+ * `stream.transcript` + the SDK's own selectors exclusively, wired by
+ * `useMobileChatInteractionActions`. Nothing else depended on the removed
+ * read path: `MobileChatToolDetailSheet`'s only production use was that
+ * auto-open flow (`openToolDetailRow`, the manual tap-to-open entry point,
+ * had zero callers even before this change — dead since E1 stopped
+ * rendering `visibleTranscriptRows`/`transcriptView.rows` to the screen).
  */
 export function useMobileChatData({
   chat,
@@ -181,21 +195,6 @@ export function useMobileChatData({
     },
     [session?.executionSummary, session?.sessionId, stream.transcript.pendingInteractions, stream.hasSynced],
   );
-  const pendingPermissionByRequestId = useMemo(
-    () => new Map(
-      pendingInteractions
-        .filter((interaction) =>
-          interaction.kind === "permission"
-          && (interaction.status === "pending" || interaction.status === "failed")
-        )
-        .map((interaction) => [interaction.requestId, interaction]),
-    ),
-    [pendingInteractions],
-  );
-  const pendingPromptCommandId = useMemo(
-    () => latestPendingPromptCommandId(pendingInteractions),
-    [pendingInteractions],
-  );
   const transcriptView = useMemo(
     () => buildCloudTranscriptView({
       sessionId: session?.sessionId ?? null,
@@ -300,17 +299,23 @@ export function useMobileChatData({
     sessionEventsQuery,
     transcriptItems,
     pendingInteractions,
-    pendingPermissionByRequestId,
-    pendingPromptCommandId,
     transcriptView,
     hasActiveOptimisticPrompt,
     pendingPromptTranscriptState,
     pendingPromptDurable,
     visibleTranscriptRows,
-    // New for E1: the live TranscriptState + its row view-models, and the
-    // seam E3 consumes (`stream.transcript.pendingInteractions`, selected
-    // via `selectPrimaryPendingInteraction`/`selectPendingApprovalInteraction`
-    // from `@anyharness/sdk` directly over `transcript`).
+    // The live TranscriptState + its row view-models — the single read
+    // path for both the rendered transcript (`liveTranscriptRows`, via
+    // `buildLiveTranscriptRows`) and interaction display/resolution (E3:
+    // `selectPrimaryPendingInteraction`/`selectPendingApprovalInteraction`/
+    // etc. from `@anyharness/sdk`, applied directly to `transcript` by
+    // `MobileChatScreen`'s `useMobileChatInteractionActions` — see that
+    // hook and `buildLiveTranscriptRows`'s interaction-card rows). Nothing
+    // interaction-related reads `pendingInteractions`/`transcriptView`
+    // below anymore (I2 collapse) — they remain only for the non-interaction
+    // concerns noted at their definitions above (optimistic-prompt
+    // visibility/seq matching, the loading-status footer dedup, and the
+    // empty-state title).
     transcript: stream.transcript,
     transcriptConnectionState: stream.connectionState,
     transcriptStreamError: stream.error,

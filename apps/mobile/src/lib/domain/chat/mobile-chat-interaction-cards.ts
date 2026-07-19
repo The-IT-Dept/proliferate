@@ -2,7 +2,7 @@ import type {
   InteractionDecision,
   McpElicitationField,
   McpElicitationSubmittedField,
-  PendingApproval,
+  PermissionInteractionOption,
   UserInputQuestion,
   UserInputSubmittedAnswer,
 } from "@anyharness/sdk";
@@ -45,10 +45,14 @@ export interface PermissionCardOption {
  * branch uses (web's fallback calls `onAllow`/`onDeny`, which
  * `useChatPermissionActions`/`useSessionInteractionResolutionActions.resolvePermission`
  * wire to the `decision` outcome, not `selected` with a synthetic option id).
+ * Takes the raw `PendingApproval.options` array directly (not the whole
+ * interaction) — that's all this derivation needs.
  */
-export function permissionCardOptions(interaction: PendingApproval): PermissionCardOption[] {
-  if (interaction.options.length > 0) {
-    return interaction.options.map((option) => ({
+export function permissionCardOptions(
+  options: readonly PermissionInteractionOption[],
+): PermissionCardOption[] {
+  if (options.length > 0) {
+    return options.map((option) => ({
       key: option.optionId,
       label: option.label,
       destructive: isDestructivePermissionOptionKind(option.kind),

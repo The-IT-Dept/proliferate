@@ -24,9 +24,9 @@ import { useVisualViewportKeyboardInset } from "../../hooks/ui/keyboard/use-visu
 import { useMobileChatData } from "../../hooks/chat/derived/use-mobile-chat-data";
 import { useMobileChatLifecycle } from "../../hooks/chat/lifecycle/use-mobile-chat-lifecycle";
 import { useMobileChatActions } from "../../hooks/chat/workflows/use-mobile-chat-actions";
+import { useMobileChatInteractionActions } from "../../hooks/chat/workflows/use-mobile-chat-interaction-actions";
 import { useMobileChatInterrupt } from "../../hooks/chat/workflows/use-mobile-chat-interrupt";
 import { useMobilePendingPromptQueue } from "../../hooks/chat/workflows/use-mobile-pending-prompt-queue";
-import { useMobileChatPermissionSheet } from "../../hooks/chat/ui/use-mobile-chat-permission-sheet";
 import { MobileWorkspaceActionSheet } from "./MobileWorkspaceActionSheet";
 import type {
   MobileCloudChat,
@@ -51,7 +51,6 @@ import { MobileChatClaimBanner } from "./screen/MobileChatClaimBanner";
 import { MobileChatComposer } from "./screen/MobileChatComposer";
 import { MobileChatHeaderActions } from "./screen/MobileChatHeaderActions";
 import { MobileChatPendingPromptQueue } from "./screen/MobileChatPendingPromptQueue";
-import { MobileChatToolDetailSheet } from "./screen/MobileChatToolDetailSheet";
 import { MobileLiveTranscriptList } from "./screen/MobileLiveTranscriptList";
 
 interface MobileChatScreenProps {
@@ -75,6 +74,9 @@ interface MobileChatScreenProps {
    */
   active?: boolean;
 }
+
+// Seed for `composerDockHeight` — see its `useState` below.
+const COMPOSER_DOCK_HEIGHT_ESTIMATE = 96;
 
 export function MobileChatScreen({
   chat,
@@ -119,6 +121,11 @@ export function MobileChatScreen({
   >({});
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [actionSheetInitialExpandedId, setActionSheetInitialExpandedId] = useState<string | null>(null);
+  // Seed the dock height so the first frame reserves sensible transcript
+  // bottom padding; the real height is measured via `onLayout` below and
+  // corrects any drift (footer note/queue rows appearing, Dynamic Type,
+  // etc.) — mirrors `MobileWorkspaceShell`'s `CHROME_HEIGHT_ESTIMATE`.
+  const [composerDockHeight, setComposerDockHeight] = useState(COMPOSER_DOCK_HEIGHT_ESTIMATE);
   const {
     workspaceQuery,
     workspace,
@@ -133,7 +140,6 @@ export function MobileChatScreen({
     sessionEventsQuery,
     transcriptItems,
     pendingInteractions,
-    pendingPermissionByRequestId,
     transcriptView,
     hasActiveOptimisticPrompt,
     pendingPromptDurable,
@@ -151,27 +157,21 @@ export function MobileChatScreen({
     pendingPromptStatus,
     optimisticPrompts,
   });
-  // E1 note: `visibleTranscriptRows` still exists (fed by the same live
-  // stream as `liveTranscriptRows` below, via the existing "Cloud domain"
-  // projection) purely so this hook's auto-open effect keeps surfacing the
-  // permission sheet the moment a permission interaction is requested — no
-  // tap required. `openToolDetailRow` (manual tap-to-open) has no caller
-  // now: the new live transcript renders tool calls as non-interactive per
-  // the plan ("E1 renders at most a minimal non-interactive placeholder for
-  // a pending interaction"); wiring real taps into a card is E3's job.
-  const {
-    toolDetailRow,
-    toolDetailPermission,
-    permissionResolveError,
-    resolvingPermissionKey,
-    setToolDetailRow,
-    setPermissionResolveError,
-    setResolvingPermissionKey,
-    closeToolDetailSheet,
-    resetPermissionSheet,
-  } = useMobileChatPermissionSheet({
-    pendingPermissionByRequestId,
-    visibleTranscriptRows,
+  // Group E3 (I2 collapse) — the old permission auto-open sheet
+  // (`use-mobile-chat-permission-sheet.ts`) and `MobileChatToolDetailSheet`
+  // are gone: they drove interaction display off the "Cloud domain"
+  // projection (`visibleTranscriptRows`/`pendingPermissionByRequestId`) in
+  // parallel with the SDK-reducer-driven transcript. Every interaction
+  // (permission/user_input/mcp_elicitation) now renders as an inline card
+  // in `liveTranscriptRows` (via `buildLiveTranscriptRows`, off
+  // `stream.transcript` directly) and resolves through
+  // `useMobileChatInteractionActions`, which the transcript list threads
+  // down to each card. `visibleTranscriptRows` remains in scope only for
+  // the two non-interaction checks below (`commandMessageShownInTranscript`)
+  // and `transcriptView.source` (`emptyTitle`) — neither reads pending
+  // interactions.
+  const interactionActions = useMobileChatInteractionActions({
+    sessionId: session?.sessionId ?? null,
   });
   const runtimeContext = summarizeRuntimeContext(workspace, workspaceStatus);
   const {
@@ -186,7 +186,6 @@ export function MobileChatScreen({
     claimPending,
     promptSubmitting,
     submitPrompt,
-    resolvePermissionInteraction,
     claimChat,
     startNewSession,
     selectSession,
@@ -214,9 +213,6 @@ export function MobileChatScreen({
     setPendingConfigChanges,
     setSelectedSessionId,
     setNewSessionMode,
-    setPermissionResolveError,
-    setResolvingPermissionKey,
-    setToolDetailRow,
     onSessionSelected,
     closeWorkspaceActionSheet,
     workspaceRefetch: workspaceQuery.refetch,
@@ -258,7 +254,6 @@ export function MobileChatScreen({
     setPendingPromptFailed,
     setOptimisticPrompts,
     setPendingConfigChanges,
-    resetPermissionSheet,
   });
   // Group E2: interrupt ("Stop run") + the runtime pending-prompt queue
   // (edit/delete/reorder/steer on already-queued messages). Both read off
@@ -401,6 +396,8 @@ export function MobileChatScreen({
 
       <MobileLiveTranscriptList
         rows={liveTranscriptRows}
+        interactionActions={interactionActions}
+        composerDockInset={insets.bottom + composerDockHeight}
         emptyTitle={emptyTitle}
         emptyBody={
           !session
@@ -424,40 +421,51 @@ export function MobileChatScreen({
         `useVisualViewportKeyboardInset` below is a web-only measurement,
         always 0 on native); `offset.opened: 0` because the keyboard itself
         already provides that clearance once it's up.
+
+        Group E3 carryover (M-ish bottom-padding fix): because the dock
+        floats/translates over the transcript instead of resizing it, the
+        transcript needs its own bottom padding reserved so the dock can't
+        cover the last row — see `composerDockInset` above, fed by
+        `composerDockHeight` measured here via `onLayout` (seeded with
+        `COMPOSER_DOCK_HEIGHT_ESTIMATE` for the first frame, corrected once
+        layout runs — mirrors `MobileWorkspaceShell`'s identical
+        `CHROME_HEIGHT_ESTIMATE`/`onLayout` pattern for its floating chrome).
       */}
       <KeyboardStickyView offset={{ closed: insets.bottom, opened: 0 }}>
-        {footerCommandMessage ? (
-          <View style={styles.footerNote}>
-            <Text style={styles.footerNoteText}>{footerCommandMessage}</Text>
-          </View>
-        ) : null}
+        <View onLayout={(event) => setComposerDockHeight(event.nativeEvent.layout.height)}>
+          {footerCommandMessage ? (
+            <View style={styles.footerNote}>
+              <Text style={styles.footerNoteText}>{footerCommandMessage}</Text>
+            </View>
+          ) : null}
 
-        <MobileChatPendingPromptQueue
-          rows={pendingPromptQueue.rows}
-          steeringSeq={pendingPromptQueue.steeringSeq}
-          queueMutationInFlight={pendingPromptQueue.queueMutationInFlight}
-          onBeginEdit={pendingPromptQueue.beginEdit}
-          onDelete={pendingPromptQueue.onDelete}
-          onSteer={pendingPromptQueue.onSteer}
-          onMoveUp={pendingPromptQueue.onMoveUp}
-          onMoveDown={pendingPromptQueue.onMoveDown}
-        />
+          <MobileChatPendingPromptQueue
+            rows={pendingPromptQueue.rows}
+            steeringSeq={pendingPromptQueue.steeringSeq}
+            queueMutationInFlight={pendingPromptQueue.queueMutationInFlight}
+            onBeginEdit={pendingPromptQueue.beginEdit}
+            onDelete={pendingPromptQueue.onDelete}
+            onSteer={pendingPromptQueue.onSteer}
+            onMoveUp={pendingPromptQueue.onMoveUp}
+            onMoveDown={pendingPromptQueue.onMoveDown}
+          />
 
-        <MobileChatComposer
-          draft={composerDraft}
-          placeholder={composerPlaceholder}
-          controlLabel={composerControlSummary.label}
-          controlPending={composerControlSummary.pending}
-          canSubmit={composerAction.enabled}
-          actionMode={composerAction.mode}
-          actionLabel={composerAction.label}
-          isEditing={pendingPromptQueue.isEditing}
-          keyboardInset={keyboardInset}
-          onChangeDraft={pendingPromptQueue.isEditing ? pendingPromptQueue.setEditDraftText : setDraft}
-          onOpenSettings={() => openWorkspaceActionSheet()}
-          onSubmit={handleComposerPrimaryAction}
-          onCancelEdit={pendingPromptQueue.cancelEdit}
-        />
+          <MobileChatComposer
+            draft={composerDraft}
+            placeholder={composerPlaceholder}
+            controlLabel={composerControlSummary.label}
+            controlPending={composerControlSummary.pending}
+            canSubmit={composerAction.enabled}
+            actionMode={composerAction.mode}
+            actionLabel={composerAction.label}
+            isEditing={pendingPromptQueue.isEditing}
+            keyboardInset={keyboardInset}
+            onChangeDraft={pendingPromptQueue.isEditing ? pendingPromptQueue.setEditDraftText : setDraft}
+            onOpenSettings={() => openWorkspaceActionSheet()}
+            onSubmit={handleComposerPrimaryAction}
+            onCancelEdit={pendingPromptQueue.cancelEdit}
+          />
+        </View>
       </KeyboardStickyView>
 
       <MobileWorkspaceActionSheet
@@ -479,16 +487,6 @@ export function MobileChatScreen({
         onSelectSession={selectSession}
         onCopyBranch={() => void copyBranchToClipboard(branchLabel)}
         onClose={closeWorkspaceActionSheet}
-      />
-      <MobileChatToolDetailSheet
-        row={toolDetailRow}
-        pendingPermission={toolDetailPermission}
-        resolvingPermissionKey={resolvingPermissionKey}
-        permissionResolveError={permissionResolveError}
-        onResolvePermission={(interaction, option) => {
-          void resolvePermissionInteraction(interaction, option);
-        }}
-        onClose={closeToolDetailSheet}
       />
     </View>
   );

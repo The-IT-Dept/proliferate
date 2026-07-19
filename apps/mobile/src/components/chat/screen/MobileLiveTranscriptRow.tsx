@@ -1,23 +1,29 @@
 import { Platform, StyleSheet, Text, View } from "react-native";
 
 import type { TranscriptRowViewModel } from "../../../lib/domain/chat/mobile-live-transcript-view";
+import type { MobileChatInteractionActions } from "../../../hooks/chat/workflows/use-mobile-chat-interaction-actions";
 import { MobileMarkdownText } from "../MobileMarkdownText";
 import { colors, radius, spacing } from "../../../styles/tokens";
+import { MobilePermissionInteractionCard } from "./interactions/MobilePermissionInteractionCard";
+import { MobileUserInputInteractionCard } from "./interactions/MobileUserInputInteractionCard";
+import { MobileMcpElicitationInteractionCard } from "./interactions/MobileMcpElicitationInteractionCard";
 
 interface MobileLiveTranscriptRowProps {
   row: TranscriptRowViewModel;
+  interactionActions: MobileChatInteractionActions;
 }
 
 /**
- * Group E1 — renders one `TranscriptRowViewModel` (see
+ * Group E1/E3 — renders one `TranscriptRowViewModel` (see
  * `mobile-live-transcript-view.ts` for the pure mapping this consumes).
  * Every row body is opaque (`colors.card`/plain text) — glass is
  * control-layer only per the plan's global constraint, not for transcript
- * content. The `pending_interaction` row is deliberately inert: no
- * `Pressable`, no buttons — E3 replaces it with the real permission/
- * user_input/mcp_elicitation cards.
+ * content. The three interaction rows (`permission_interaction`/
+ * `user_input_interaction`/`mcp_elicitation_interaction`) are the one
+ * exception: real cards with buttons/fields, wired to
+ * `interactionActions` (`useMobileChatInteractionActions`).
  */
-export function MobileLiveTranscriptRow({ row }: MobileLiveTranscriptRowProps) {
+export function MobileLiveTranscriptRow({ row, interactionActions }: MobileLiveTranscriptRowProps) {
   switch (row.kind) {
     case "user_message":
       return <UserMessageRow row={row} />;
@@ -33,8 +39,37 @@ export function MobileLiveTranscriptRow({ row }: MobileLiveTranscriptRowProps) {
       return <ProposedPlanRow row={row} />;
     case "error":
       return <ErrorRow row={row} />;
-    case "pending_interaction":
-      return <PendingInteractionRow row={row} />;
+    case "permission_interaction":
+      return (
+        <MobilePermissionInteractionCard
+          row={row}
+          resolving={interactionActions.resolvingRequestId === row.requestId}
+          onSelectOption={interactionActions.resolvePermissionOption}
+          onDecision={interactionActions.resolvePermissionDecision}
+        />
+      );
+    case "user_input_interaction":
+      return (
+        <MobileUserInputInteractionCard
+          key={row.requestId}
+          row={row}
+          resolving={interactionActions.resolvingRequestId === row.requestId}
+          onSubmit={interactionActions.submitUserInput}
+          onCancel={interactionActions.cancelUserInput}
+        />
+      );
+    case "mcp_elicitation_interaction":
+      return (
+        <MobileMcpElicitationInteractionCard
+          key={row.requestId}
+          row={row}
+          resolving={interactionActions.resolvingRequestId === row.requestId}
+          onAccept={interactionActions.acceptMcpElicitation}
+          onDecline={interactionActions.declineMcpElicitation}
+          onCancel={interactionActions.cancelMcpElicitation}
+          onRevealUrl={interactionActions.revealMcpElicitationUrl}
+        />
+      );
     default:
       // Exhaustiveness fallback: a component returning `undefined` (rather
       // than `null`) throws. `row.kind` is exhaustively typed today, but a
@@ -138,29 +173,6 @@ function ErrorRow({ row }: { row: Extract<TranscriptRowViewModel, { kind: "error
     <View style={styles.errorCard}>
       {row.code ? <Text style={styles.errorCode}>{row.code}</Text> : null}
       <Text style={styles.errorMessage}>{row.message}</Text>
-    </View>
-  );
-}
-
-const PENDING_INTERACTION_LABEL: Record<
-  Extract<TranscriptRowViewModel, { kind: "pending_interaction" }>["interactionKind"],
-  string
-> = {
-  permission: "Permission needed",
-  user_input: "Input needed",
-  mcp_elicitation: "Action needed",
-};
-
-function PendingInteractionRow({
-  row,
-}: {
-  row: Extract<TranscriptRowViewModel, { kind: "pending_interaction" }>;
-}) {
-  return (
-    <View style={styles.pendingCard} accessibilityRole="text">
-      <Text style={styles.pendingLabel}>{PENDING_INTERACTION_LABEL[row.interactionKind]}</Text>
-      <Text style={styles.pendingTitle}>{row.title}</Text>
-      {row.description ? <Text style={styles.pendingDescription}>{row.description}</Text> : null}
     </View>
   );
 }
@@ -299,31 +311,5 @@ const styles = StyleSheet.create({
     color: colors.fg,
     fontSize: 14,
     lineHeight: 19,
-  },
-  pendingCard: {
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[2],
-    gap: 2,
-    opacity: 0.9,
-  },
-  pendingLabel: {
-    color: colors.faint,
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  pendingTitle: {
-    color: colors.fg,
-    fontSize: 14.5,
-    fontWeight: "600",
-  },
-  pendingDescription: {
-    color: colors.faint,
-    fontSize: 12.5,
-    lineHeight: 17,
   },
 });
