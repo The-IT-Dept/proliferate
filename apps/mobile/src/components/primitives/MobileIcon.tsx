@@ -44,7 +44,8 @@ export type MobileIconName =
   | "terminal"
   | "archive"
   | "trash"
-  | "pencil";
+  | "pencil"
+  | "stop";
 
 interface MobileIconProps {
   name: MobileIconName;
@@ -388,6 +389,12 @@ export function MobileIcon({ name, size = 18, color = colors.fg }: MobileIconPro
         <Svg {...props}>
           <Path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
           <Line x1="14.5" y1="7" x2="17.5" y2="10" />
+        </Svg>
+      );
+    case "stop":
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+          <Rect x="5" y="5" width="14" height="14" rx="3" />
         </Svg>
       );
   }

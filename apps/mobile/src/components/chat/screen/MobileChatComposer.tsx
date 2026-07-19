@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-
+import type { ComposerActionMode } from "../../../lib/domain/chat/mobile-chat-composer-state";
 import { MobileIcon } from "../../primitives/MobileIcon";
 import { MobileTextInput } from "../../primitives/MobileTextInput";
 import { colors, radius, spacing } from "../../../styles/tokens";
@@ -10,26 +10,58 @@ interface MobileChatComposerProps {
   controlLabel: string;
   controlPending: boolean;
   canSubmit: boolean;
+  actionMode: ComposerActionMode;
+  actionLabel: string;
+  isEditing: boolean;
   keyboardInset: number;
   onChangeDraft: (value: string) => void;
   onOpenSettings: () => void;
   onSubmit: () => void;
+  onCancelEdit: () => void;
 }
 
+/**
+ * Group E2 — the primary action button swaps between send / queue / stop /
+ * save (see `deriveComposerAction`, `mobile-chat-composer-state.ts`) rather
+ * than always being "Send", mirroring the web's `ChatComposerActions.tsx`:
+ * a running session with a draft still sends (the runtime queues it), an
+ * empty draft while running offers Stop instead of a disabled Send, and
+ * editing a queued message takes the button over as Save regardless of run
+ * state. `actionLabel` carries the verbatim copy so accessibility and any
+ * on-screen label stay in lockstep with the actual behavior.
+ */
 export function MobileChatComposer({
   draft,
   placeholder,
   controlLabel,
   controlPending,
   canSubmit,
+  actionMode,
+  actionLabel,
+  isEditing,
   keyboardInset,
   onChangeDraft,
   onOpenSettings,
   onSubmit,
+  onCancelEdit,
 }: MobileChatComposerProps) {
+  const actionIcon = actionMode === "stop" ? "stop" : actionMode === "save" ? "check" : "send";
   return (
     <View style={[styles.composer, keyboardInset > 0 && { marginBottom: keyboardInset }]}>
       <View style={styles.composerCard}>
+        {isEditing ? (
+          <View style={styles.editingBanner}>
+            <Text style={styles.editingBannerText}>Editing queued message</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel edit"
+              onPress={onCancelEdit}
+              hitSlop={8}
+            >
+              <Text style={styles.editingBannerCancel}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <MobileTextInput
           multiline
           value={draft}
@@ -55,7 +87,7 @@ export function MobileChatComposer({
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Send"
+            accessibilityLabel={actionLabel}
             accessibilityState={{ disabled: !canSubmit }}
             disabled={!canSubmit}
             onPress={onSubmit}
@@ -65,7 +97,7 @@ export function MobileChatComposer({
               pressed && styles.sendPressed,
             ]}
           >
-            <MobileIcon name="send" size={18} color={canSubmit ? colors.background : colors.faint} />
+            <MobileIcon name={actionIcon} size={18} color={canSubmit ? colors.background : colors.faint} />
           </Pressable>
         </View>
       </View>
@@ -89,6 +121,22 @@ const styles = StyleSheet.create({
     paddingTop: spacing[3],
     paddingBottom: spacing[3],
     gap: spacing[2],
+  },
+  editingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing[2],
+  },
+  editingBannerText: {
+    color: colors.faint,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  editingBannerCancel: {
+    color: colors.info,
+    fontSize: 12,
+    fontWeight: "600",
   },
   composerInput: {
     minHeight: 23,

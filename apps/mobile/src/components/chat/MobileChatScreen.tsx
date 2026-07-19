@@ -1,14 +1,15 @@
 import { useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import {
-  KeyboardAvoidingView,
   Platform,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { Stack } from "expo-router";
+import type { SessionExecutionSummary, SessionStatus } from "@anyharness/sdk";
 import {
   DEFAULT_DIRECT_PROMPT_AGENT_KIND,
   DEFAULT_DIRECT_PROMPT_MODEL_ID,
@@ -23,6 +24,8 @@ import { useVisualViewportKeyboardInset } from "../../hooks/ui/keyboard/use-visu
 import { useMobileChatData } from "../../hooks/chat/derived/use-mobile-chat-data";
 import { useMobileChatLifecycle } from "../../hooks/chat/lifecycle/use-mobile-chat-lifecycle";
 import { useMobileChatActions } from "../../hooks/chat/workflows/use-mobile-chat-actions";
+import { useMobileChatInterrupt } from "../../hooks/chat/workflows/use-mobile-chat-interrupt";
+import { useMobilePendingPromptQueue } from "../../hooks/chat/workflows/use-mobile-pending-prompt-queue";
 import { useMobileChatPermissionSheet } from "../../hooks/chat/ui/use-mobile-chat-permission-sheet";
 import { MobileWorkspaceActionSheet } from "./MobileWorkspaceActionSheet";
 import type {
@@ -38,10 +41,16 @@ import {
   isPromptProgressStatus,
   loadingStatusText,
 } from "../../lib/domain/chat/mobile-chat-row-presentation";
+import {
+  deriveComposerAction,
+  deriveComposerPlaceholder,
+  isMobileSessionRunning,
+} from "../../lib/domain/chat/mobile-chat-composer-state";
 import { colors, radius, spacing } from "../../styles/tokens";
 import { MobileChatClaimBanner } from "./screen/MobileChatClaimBanner";
 import { MobileChatComposer } from "./screen/MobileChatComposer";
 import { MobileChatHeaderActions } from "./screen/MobileChatHeaderActions";
+import { MobileChatPendingPromptQueue } from "./screen/MobileChatPendingPromptQueue";
 import { MobileChatToolDetailSheet } from "./screen/MobileChatToolDetailSheet";
 import { MobileLiveTranscriptList } from "./screen/MobileLiveTranscriptList";
 
@@ -130,6 +139,8 @@ export function MobileChatScreen({
     pendingPromptDurable,
     visibleTranscriptRows,
     liveTranscriptRows,
+    transcript,
+    transcriptConnectionState,
   } = useMobileChatData({
     chat,
     active,
@@ -249,6 +260,23 @@ export function MobileChatScreen({
     setPendingConfigChanges,
     resetPermissionSheet,
   });
+  // Group E2: interrupt ("Stop run") + the runtime pending-prompt queue
+  // (edit/delete/reorder/steer on already-queued messages). Both read off
+  // the same live stream E1 exposes (`transcript`/`transcriptConnectionState`)
+  // rather than a separate poll, and both are real `@anyharness/sdk-react`
+  // mutations — no hand-rolled client calls.
+  const { cancelActiveSession } = useMobileChatInterrupt();
+  const pendingPromptQueue = useMobilePendingPromptQueue({
+    sessionId: session?.sessionId ?? null,
+    entries: transcript.pendingPrompts,
+  });
+  const isSessionRunning = isMobileSessionRunning({
+    status: (session?.status as SessionStatus | null | undefined) ?? null,
+    executionSummary: session?.executionSummary as SessionExecutionSummary | null | undefined,
+    isStreaming: transcript.isStreaming,
+    pendingInteractions: transcript.pendingInteractions,
+    connectionState: transcriptConnectionState,
+  });
   function openWorkspaceActionSheet(expandedId: string | null = null) {
     setActionSheetInitialExpandedId(expandedId);
     setActionSheetOpen(true);
@@ -265,14 +293,36 @@ export function MobileChatScreen({
     workspaceStatus === "ready"
     && Boolean(workspace?.anyharnessWorkspaceId)
     && commandReadiness?.commandable === true;
-  const canSubmit = Boolean(
-    draft.trim()
-      && !isUnclaimed
-      && !promptSubmitting
-      && !sessionChoiceRequired
-      && (session ? true : canStartNewSession)
-      && workspaceCommandReady,
+  // Everything the composer needs blocked *except* draft emptiness — feeds
+  // `deriveComposerAction` below, which handles emptiness itself per-mode
+  // (send/save gate on it, stop never does).
+  const composerDisabledBase = Boolean(
+    isUnclaimed
+      || promptSubmitting
+      || sessionChoiceRequired
+      || !(session ? true : canStartNewSession)
+      || !workspaceCommandReady,
   );
+  const composerDraft = pendingPromptQueue.isEditing ? pendingPromptQueue.editDraft : draft;
+  const composerAction = deriveComposerAction({
+    isRunning: isSessionRunning,
+    isEmpty: composerDraft.trim().length === 0,
+    isDisabled: composerDisabledBase,
+    isEditingQueuedPrompt: pendingPromptQueue.isEditing,
+  });
+  function handleComposerPrimaryAction() {
+    if (composerAction.mode === "stop") {
+      if (session) {
+        void cancelActiveSession(session.sessionId);
+      }
+      return;
+    }
+    if (composerAction.mode === "save") {
+      void pendingPromptQueue.commitEdit();
+      return;
+    }
+    void submitPrompt();
+  }
   const title = newSessionMode
     ? "New session"
     : session?.title ?? workspace?.displayName ?? chat.title;
@@ -293,23 +343,28 @@ export function MobileChatScreen({
     : sessionEventsQuery.isLoading && transcriptView.source === "empty"
       ? "Loading transcript"
       : "Waiting for the first projected transcript event.";
+  // Verbatim mockup/web copy ("Describe a task, @mention files, run
+  // /commands" — CHAT_COMPOSER_LABELS.placeholder, chat-copy.ts; mockup F's
+  // "Message this session" composer-dock line is the session-title context,
+  // not the placeholder) once the composer is actually usable; the blocked
+  // states below it keep their own explanatory text since web has no
+  // equivalent (its composer is always attached to a materialized session).
+  const composerReadyPlaceholder = deriveComposerPlaceholder({
+    hasSessionTurns: transcript.turnOrder.length > 0,
+  });
   const composerPlaceholder = isUnclaimed
     ? "Claim this workspace to reply"
     : sessionChoiceRequired
       ? "Choose a session or start a new one"
     : session
-      ? "Message this session"
+      ? composerReadyPlaceholder
       : !canStartNewSession
         ? "Choose an available cloud agent"
       : workspaceCommandReady
-        ? "Start a session with a message"
+        ? composerReadyPlaceholder
         : "Waiting for workspace";
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { paddingTop: topInset ?? headerHeight }]}
-      behavior={Platform.select({ ios: "padding", default: undefined })}
-      keyboardVerticalOffset={0}
-    >
+    <View style={[styles.root, { paddingTop: topInset ?? headerHeight }]}>
       {/*
         Native header (compact, not large-title - see the workspace/[id]
         Stack.Screen options in app/_layout.tsx for the glass setup). Actions
@@ -356,23 +411,54 @@ export function MobileChatScreen({
         }
       />
 
-      {footerCommandMessage ? (
-        <View style={styles.footerNote}>
-          <Text style={styles.footerNoteText}>{footerCommandMessage}</Text>
-        </View>
-      ) : null}
+      {/*
+        Group E2: the composer dock (+ queued-message list, + the footer
+        status note that used to sit above it as a plain flex sibling) rides
+        the keyboard as one unit via `KeyboardStickyView`
+        (react-native-keyboard-controller) — the primitive built for
+        exactly this "bottom-docked chat composer" shape, translating above
+        the keyboard rather than resizing the whole screen the way the
+        former root `KeyboardAvoidingView` did. `offset.closed` adds the
+        safe-area bottom inset so the dock clears the home indicator when
+        the keyboard is closed (previously unhandled on native —
+        `useVisualViewportKeyboardInset` below is a web-only measurement,
+        always 0 on native); `offset.opened: 0` because the keyboard itself
+        already provides that clearance once it's up.
+      */}
+      <KeyboardStickyView offset={{ closed: insets.bottom, opened: 0 }}>
+        {footerCommandMessage ? (
+          <View style={styles.footerNote}>
+            <Text style={styles.footerNoteText}>{footerCommandMessage}</Text>
+          </View>
+        ) : null}
 
-      <MobileChatComposer
-        draft={draft}
-        placeholder={composerPlaceholder}
-        controlLabel={composerControlSummary.label}
-        controlPending={composerControlSummary.pending}
-        canSubmit={canSubmit}
-        keyboardInset={keyboardInset}
-        onChangeDraft={setDraft}
-        onOpenSettings={() => openWorkspaceActionSheet()}
-        onSubmit={() => void submitPrompt()}
-      />
+        <MobileChatPendingPromptQueue
+          rows={pendingPromptQueue.rows}
+          steeringSeq={pendingPromptQueue.steeringSeq}
+          queueMutationInFlight={pendingPromptQueue.queueMutationInFlight}
+          onBeginEdit={pendingPromptQueue.beginEdit}
+          onDelete={pendingPromptQueue.onDelete}
+          onSteer={pendingPromptQueue.onSteer}
+          onMoveUp={pendingPromptQueue.onMoveUp}
+          onMoveDown={pendingPromptQueue.onMoveDown}
+        />
+
+        <MobileChatComposer
+          draft={composerDraft}
+          placeholder={composerPlaceholder}
+          controlLabel={composerControlSummary.label}
+          controlPending={composerControlSummary.pending}
+          canSubmit={composerAction.enabled}
+          actionMode={composerAction.mode}
+          actionLabel={composerAction.label}
+          isEditing={pendingPromptQueue.isEditing}
+          keyboardInset={keyboardInset}
+          onChangeDraft={pendingPromptQueue.isEditing ? pendingPromptQueue.setEditDraftText : setDraft}
+          onOpenSettings={() => openWorkspaceActionSheet()}
+          onSubmit={handleComposerPrimaryAction}
+          onCancelEdit={pendingPromptQueue.cancelEdit}
+        />
+      </KeyboardStickyView>
 
       <MobileWorkspaceActionSheet
         visible={actionSheetOpen}
@@ -404,7 +490,7 @@ export function MobileChatScreen({
         }}
         onClose={closeToolDetailSheet}
       />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
