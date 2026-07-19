@@ -26,6 +26,34 @@ describe("parsePushDeepLink", () => {
     expect(parsePushDeepLink({ sessionId: "sess1", requestId: "req1" })).toBeNull();
   });
 
+  it("parses a JSON-stringified data payload (some Android/FCM delivery paths hand back content.data as a string)", () => {
+    expect(
+      parsePushDeepLink(
+        JSON.stringify({ workspaceId: "ws1", sessionId: "sess1", requestId: "req1", kind: "permission" }),
+      ),
+    ).toEqual({ workspaceId: "ws1", sessionId: "sess1", requestId: "req1" });
+  });
+
+  it("nulls out an absent sessionId/requestId in a JSON-stringified data payload", () => {
+    expect(parsePushDeepLink(JSON.stringify({ workspaceId: "ws1", kind: "awaiting" }))).toEqual({
+      workspaceId: "ws1",
+      sessionId: null,
+      requestId: null,
+    });
+  });
+
+  it("falls through to URL parsing for a JSON string with no workspaceId", () => {
+    expect(parsePushDeepLink(JSON.stringify({ foo: "bar" }))).toBeNull();
+  });
+
+  it("still falls through to URL parsing for a non-JSON string", () => {
+    expect(parsePushDeepLink("proliferate://workspace/ws1?interaction=req-42")).toEqual({
+      workspaceId: "ws1",
+      sessionId: null,
+      requestId: "req-42",
+    });
+  });
+
   it("delegates a deep-link URL string to mobileWorkspaceLinkFromUrl", () => {
     expect(parsePushDeepLink("proliferate://workspace/ws1?interaction=req-42")).toEqual({
       workspaceId: "ws1",

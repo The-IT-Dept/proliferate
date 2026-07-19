@@ -14,7 +14,10 @@ import { mobileWorkspaceLinkFromUrl } from "../domain/shell/mobile-deep-link";
  *    `server/proliferate/server/cloud/push/delivery.py`) — what
  *    `handler.ts`'s `addNotificationResponseReceivedListener`/
  *    `getLastNotificationResponseAsync` actually hands back
- *    (`response.notification.request.content.data`);
+ *    (`response.notification.request.content.data`). Some Android/FCM
+ *    delivery paths hand this back as a JSON-stringified string rather
+ *    than an already-parsed object — a string that JSON-parses to a
+ *    record with a `workspaceId` is treated as this same shape;
  *  - a deep-link URL string, delegated to `mobileWorkspaceLinkFromUrl`
  *    (not reimplemented here) for symmetry with every other entry point
  *    into the same route (native-intent, universal links).
@@ -32,6 +35,15 @@ export interface PushDeepLink {
 
 export function parsePushDeepLink(input: unknown): PushDeepLink | null {
   if (typeof input === "string") {
+    // Some Android/FCM delivery paths hand back `content.data` as a JSON
+    // STRING rather than an already-parsed object. Only treat it as the
+    // data-payload shape if it parses to a record with a `workspaceId` -
+    // anything else (not JSON, or JSON that isn't that shape) falls through
+    // to the URL branch below unchanged.
+    const stringifiedData = tryParseDataString(input);
+    if (stringifiedData) {
+      return parseDataRecord(stringifiedData);
+    }
     const link = mobileWorkspaceLinkFromUrl(input);
     return link ? { workspaceId: link.workspaceId, sessionId: link.sessionId, requestId: link.requestId } : null;
   }
@@ -40,6 +52,10 @@ export function parsePushDeepLink(input: unknown): PushDeepLink | null {
     return null;
   }
 
+  return parseDataRecord(input);
+}
+
+function parseDataRecord(input: Record<string, unknown>): PushDeepLink | null {
   const workspaceId = typeof input.workspaceId === "string" ? input.workspaceId : null;
   if (!workspaceId) {
     return null;
@@ -50,6 +66,16 @@ export function parsePushDeepLink(input: unknown): PushDeepLink | null {
     sessionId: typeof input.sessionId === "string" ? input.sessionId : null,
     requestId: typeof input.requestId === "string" ? input.requestId : null,
   };
+}
+
+function tryParseDataString(input: string): Record<string, unknown> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    return null;
+  }
+  return isRecord(parsed) && typeof parsed.workspaceId === "string" ? parsed : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
