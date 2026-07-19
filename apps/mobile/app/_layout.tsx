@@ -127,6 +127,21 @@ function RootNavigationGate() {
                 // scrollEdgeEffects).
                 headerTransparent: true,
                 headerBlurEffect: "systemChromeMaterial",
+                // We commit to the explicit `headerBlurEffect` above for the
+                // glass (it works on every iOS version). On iOS 26 the native
+                // stack ALSO applies an automatic scroll-edge effect to each
+                // edge (it defaults every edge to "automatic"), which layers a
+                // second glass treatment under the header and made RNScreens
+                // warn: "Using both `blurEffect` and `scrollEdgeEffects`
+                // simultaneously may cause overlapping effects." Opt out of the
+                // automatic effect on all edges so there's exactly one glass —
+                // the header blur — and no double effect.
+                scrollEdgeEffects: {
+                  top: "hidden",
+                  bottom: "hidden",
+                  left: "hidden",
+                  right: "hidden",
+                },
               }}
             />
           </Stack.Protected>
