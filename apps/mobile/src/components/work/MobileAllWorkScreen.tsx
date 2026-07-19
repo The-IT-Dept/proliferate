@@ -26,7 +26,7 @@ import {
   MobileWorkFilterSheet,
 } from "./screen/MobileWorkFilterSheet";
 import { MobileWorkSummaryPill } from "./screen/MobileWorkFilterRows";
-import { colors, layout, radius, spacing } from "../../styles/tokens";
+import { colors, radius, spacing } from "../../styles/tokens";
 
 interface MobileWorkspacesScreenProps {
   onOpenChat: (chat: MobileCloudChat) => void;
@@ -35,10 +35,11 @@ interface MobileWorkspacesScreenProps {
 export function MobileWorkspacesScreen({
   onOpenChat,
 }: MobileWorkspacesScreenProps) {
-  // The native tab bar computes its own content insets for the first
-  // scroll view in a tab screen (app/(tabs)/_layout.tsx), so this no
-  // longer needs to reserve a floating bar's footprint by hand.
-  const scrollContentBottomPadding = layout.screenBottomPadding;
+  // MobileScreen's ScrollView carries the native content inset
+  // (contentInsetAdjustmentBehavior="automatic"): the large-title top inset
+  // (so the filter pills / list start below the "Workspaces" title) and the
+  // tab-bar bottom footprint. This is just baseline bottom breathing room.
+  const scrollContentBottomPadding = spacing[8];
   const [filterOpen, setFilterOpen] = useState(false);
   const allInventory = useMobileWorkInventory();
   const filterState = useMobileWorkFilters(allInventory.items);
