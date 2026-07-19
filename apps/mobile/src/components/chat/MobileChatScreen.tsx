@@ -411,6 +411,7 @@ export function MobileChatScreen({
         rows={liveTranscriptRows}
         interactionActions={interactionActions}
         composerDockInset={insets.bottom + composerDockHeight}
+        focusRequestId={chat.initialInteractionRequestId}
         emptyTitle={emptyTitle}
         emptyBody={
           !session

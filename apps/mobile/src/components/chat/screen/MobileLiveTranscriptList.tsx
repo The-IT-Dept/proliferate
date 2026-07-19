@@ -1,6 +1,8 @@
+import { useEffect, useRef } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import type { TranscriptRowViewModel } from "../../../lib/domain/chat/mobile-live-transcript-view";
+import { focusedInteractionRowIndex } from "../../../lib/domain/chat/mobile-chat-interaction-focus";
 import type { MobileChatInteractionActions } from "../../../hooks/chat/workflows/use-mobile-chat-interaction-actions";
 import { MobileLiveTranscriptRow } from "./MobileLiveTranscriptRow";
 import { colors, radius, spacing } from "../../../styles/tokens";
@@ -23,6 +25,15 @@ interface MobileLiveTranscriptListProps {
    * both states.
    */
   composerDockInset: number;
+  /**
+   * Push subsystem Task 6 — the `requestId` carried in from a push/deep
+   * link tap (`MobileCloudChat.initialInteractionRequestId`, threaded down
+   * by `MobileChatScreen`). When the matching interaction-card row shows up
+   * in `rows` (`focusedInteractionRowIndex`, pure/tested), this list
+   * scrolls to it once. `null`/no match (e.g. the interaction is still
+   * streaming in) is a graceful no-op, not an error.
+   */
+  focusRequestId?: string | null;
 }
 
 /**
@@ -46,9 +57,43 @@ export function MobileLiveTranscriptList({
   emptyBody,
   interactionActions,
   composerDockInset,
+  focusRequestId,
 }: MobileLiveTranscriptListProps) {
+  const listRef = useRef<FlatList<TranscriptRowViewModel>>(null);
+  // Latches on the requestId once scrolled-to so a later, unrelated `rows`
+  // update (the transcript re-renders often while streaming) doesn't yank
+  // the list back to the same card repeatedly or fight the user's own
+  // scrolling. A new `focusRequestId` (a different push tap opening the
+  // same workspace) clears the latch naturally since the comparison is
+  // against its own value, not a boolean.
+  const focusedRequestIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!focusRequestId || focusedRequestIdRef.current === focusRequestId) {
+      return;
+    }
+    const index = focusedInteractionRowIndex(rows, focusRequestId);
+    if (index === null) {
+      // Not present yet — the interaction may still be streaming in. Leave
+      // the latch unset so the next `rows` update (new transcript event)
+      // gets another chance.
+      return;
+    }
+    focusedRequestIdRef.current = focusRequestId;
+    requestAnimationFrame(() => {
+      try {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+      } catch {
+        // Best-effort — a mid-flight layout pass can make scrollToIndex
+        // throw; onScrollToIndexFailed below covers the common case
+        // (unmeasured rows), this guards anything it doesn't.
+      }
+    });
+  }, [rows, focusRequestId]);
+
   return (
     <FlatList
+      ref={listRef}
       style={styles.list}
       contentContainerStyle={[styles.content, { paddingBottom: spacing[3] + composerDockInset }]}
       keyboardShouldPersistTaps="handled"
@@ -57,6 +102,18 @@ export function MobileLiveTranscriptList({
       renderItem={({ item }) => (
         <MobileLiveTranscriptRow row={item} interactionActions={interactionActions} />
       )}
+      onScrollToIndexFailed={(info) => {
+        // FlatList can't jump straight to an index it hasn't measured yet
+        // (variable-height rows, no getItemLayout) — scroll to the best
+        // estimate first, then retry once layout has caught up.
+        listRef.current?.scrollToOffset({
+          offset: info.averageItemLength * info.index,
+          animated: false,
+        });
+        setTimeout(() => {
+          listRef.current?.scrollToIndex({ index: info.index, animated: true });
+        }, 50);
+      }}
       ListEmptyComponent={
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>{emptyTitle}</Text>
