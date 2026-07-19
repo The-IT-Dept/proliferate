@@ -18,7 +18,7 @@ import {
   publishRunReducer,
   type PublishRunPhase,
 } from "../../../lib/domain/workspace/mobile-publish-run-state";
-import { runMobilePublishWorkflow } from "../../../lib/domain/workspace/mobile-publish-workflow-runner";
+import { runPublish, type PublishInFlightTracker } from "../../../lib/domain/workspace/mobile-publish-run";
 import type { PublishCommitDraft } from "../../../lib/domain/workspace/mobile-publish-workflow-model";
 
 const EMPTY_COMMIT_DRAFT: PublishCommitDraft = { summary: "", includeUnstaged: false };
@@ -28,8 +28,8 @@ const EMPTY_COMMIT_DRAFT: PublishCommitDraft = { summary: "", includeUnstaged: f
  * (`useGitStatusQuery`, `useCurrentPullRequestQuery`,
  * `useStageGitPathsMutation`, `useCommitGitMutation`, `usePushGitMutation`,
  * `useCreatePullRequestMutation` — all exist already, none hand-rolled) to
- * the pure `buildMobilePublishView`/`runMobilePublishWorkflow` domain logic.
- * Mirrors web's `useWorkspacePublishWorkflow`
+ * the pure `buildMobilePublishView`/`runPublish` domain logic. Mirrors web's
+ * `useWorkspacePublishWorkflow`
  * (`product-client/src/hooks/workspaces/workflows/use-workspace-publish-workflow.ts`)
  * shape — draft state + a `submit()` that runs the ordered steps and
  * refetches on completion — minus the AI-magic commit-message generation and
@@ -39,16 +39,29 @@ const EMPTY_COMMIT_DRAFT: PublishCommitDraft = { summary: "", includeUnstaged: f
  * No optimistic updates: `useCommitGitMutation`/`usePushGitMutation`/
  * `useCreatePullRequestMutation` already invalidate the git-status/PR query
  * keys on success (`anyharness/sdk-react/src/hooks/git.ts`,
- * `pull-requests.ts`), and this hook's own `Promise.allSettled` refetch in
- * `submit()`'s `finally` (mirroring web's) makes sure the Diff surface's
- * changes list and PR badge are showing real server state by the time the
- * sheet closes, not a guessed one. Failures toast
+ * `pull-requests.ts`), and this hook's own `Promise.allSettled` refetch
+ * (passed into `runPublish` as `refetch`, mirroring web's) makes sure the
+ * Diff surface's changes list and PR badge are showing real server state by
+ * the time the sheet closes, not a guessed one. Failures toast
  * (`useMobileToast`); they never get silently swallowed into a stale view.
+ *
+ * Fix 2 (reviewer finding, "test the orchestration hook"): `submit()`'s
+ * body — the in-flight guard, the try/catch that turns a thrown step error
+ * into a `failed` run-state event plus a toast, and the `finally` refetch —
+ * now lives in `mobile-publish-run.ts`'s `runPublish`, the same move Row
+ * 20's Fix 4 made for `useMobilePlanDecisionActions`/`runPlanDecision`. This
+ * hook is just the React wiring around it: real mutations, the toast, and
+ * `runState`/`isSubmitting` (this file's own `.test.ts` still can't reach
+ * directly, since there's no RN/DOM render harness in this app — see that
+ * module's doc comment for why). `runningRef` is now `trackerRef`, holding
+ * the same plain `{ running: boolean }` shape `runPublish` reads/writes
+ * synchronously, so the double-submit guard is provably synchronous rather
+ * than just asserted to be.
  */
 export function useMobilePublishWorkflow() {
   const [commitDraft, setCommitDraft] = useState<PublishCommitDraft>(EMPTY_COMMIT_DRAFT);
   const [runState, dispatch] = useReducer(publishRunReducer, INITIAL_PUBLISH_RUN_STATE);
-  const runningRef = useRef(false);
+  const trackerRef = useRef<PublishInFlightTracker>({ running: false });
   const toast = useMobileToast();
 
   const statusQuery = useGitStatusQuery();
@@ -81,41 +94,23 @@ export function useMobilePublishWorkflow() {
   }, []);
 
   const submit = useCallback(async (): Promise<boolean> => {
-    if (runningRef.current) {
-      return false;
-    }
-    if (view.disabledReason) {
-      // Defensive only — the sheet's primary action is disabled whenever
-      // `view.disabledReason` is set, so this guards a double-invocation
-      // rather than a real user-facing failure; nothing to toast.
-      return false;
-    }
-    runningRef.current = true;
-    let completed = false;
-    try {
-      await runMobilePublishWorkflow(
-        view.workflowSteps,
-        {
-          stagePaths: (paths) => stageMutation.mutateAsync(paths),
-          commit: (input) => commitMutation.mutateAsync(input),
-          push: () => pushMutation.mutateAsync({}),
-          createPullRequest: (input) => createPullRequestMutation.mutateAsync(input),
-        },
-        dispatch,
-      );
-      dispatch({ type: "completed" });
-      completed = true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to publish.";
-      dispatch({ type: "failed", message });
-      toast.show({ tone: "error", message });
-    } finally {
-      await Promise.allSettled([
-        statusQuery.refetch(),
-        currentBranch ? prQuery.refetch() : Promise.resolve(),
-      ]);
-      runningRef.current = false;
-    }
+    const { completed } = await runPublish({
+      steps: view.workflowSteps,
+      runner: {
+        stagePaths: (paths) => stageMutation.mutateAsync(paths),
+        commit: (input) => commitMutation.mutateAsync(input),
+        push: () => pushMutation.mutateAsync({}),
+        createPullRequest: (input) => createPullRequestMutation.mutateAsync(input),
+      },
+      tracker: trackerRef.current,
+      dispatch,
+      refetch: () =>
+        Promise.allSettled([
+          statusQuery.refetch(),
+          currentBranch ? prQuery.refetch() : Promise.resolve(),
+        ]),
+      showToast: (message) => toast.show({ tone: "error", message }),
+    });
     if (completed) {
       setCommitDraft(EMPTY_COMMIT_DRAFT);
     }
@@ -129,7 +124,6 @@ export function useMobilePublishWorkflow() {
     stageMutation,
     statusQuery,
     toast,
-    view.disabledReason,
     view.workflowSteps,
   ]);
 
