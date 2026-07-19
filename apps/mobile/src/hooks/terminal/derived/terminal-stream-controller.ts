@@ -57,6 +57,31 @@ export interface TerminalStreamConnectionInfo {
   webSocketAuthTransport?: TerminalWebSocketAuthTransport;
 }
 
+/** The one seam that maps `@anyharness/sdk-react`'s resolved workspace
+ * connection (`AnyHarnessResolvedConnection`, whose `runtimeUrl` names the
+ * field differently from this controller's `baseUrl`) onto
+ * `TerminalStreamConnectionInfo` — pulled out of `useTerminalStream`
+ * (`hooks/terminal/derived/use-terminal-stream.ts`) so the one line whose
+ * omission silently breaks terminal auth (`webSocketAuthTransport`) is
+ * covered by a plain-vitest unit test instead of only being exercised by
+ * this hook, which needs RTL (unavailable here — mobile vitest is
+ * node-env, no react renderer) to test directly. Deliberately takes a
+ * structural/duck-typed param rather than importing
+ * `AnyHarnessResolvedConnection` from `@anyharness/sdk-react`, keeping this
+ * module's only external type dependency the `TerminalWebSocketAuthTransport`
+ * it already imports from `@anyharness/sdk`. */
+export function toTerminalStreamConnectionInfo(connection: {
+  runtimeUrl: string;
+  authToken?: string;
+  webSocketAuthTransport?: TerminalWebSocketAuthTransport;
+}): TerminalStreamConnectionInfo {
+  return {
+    baseUrl: connection.runtimeUrl,
+    authToken: connection.authToken,
+    webSocketAuthTransport: connection.webSocketAuthTransport,
+  };
+}
+
 export interface TerminalStreamControllerDeps {
   /** Injectable seam for tests — defaults to the real `@anyharness/sdk`
    * `connectTerminal`. */
@@ -82,6 +107,14 @@ export class TerminalStreamController {
   private generation = 0;
   private wanted = false;
   private dedupe: TerminalFrameDedupeState = createTerminalFrameDedupeState();
+  /** The most recent size requested via `sendResize`, independent of
+   * connection state — tracked so it can be re-sent on every `onOpen`
+   * (see that handler below). Without this, a resize requested while the
+   * stream is still connecting (the common cold-start race: the WebView's
+   * FitAddon fits and calls back before `resolveConnection()` settles) is
+   * silently dropped by the `this.handle?.sendResize` no-op below, leaving
+   * the PTY stuck at the server's 80x24 create default. */
+  private lastResize: { cols: number; rows: number } | null = null;
 
   constructor(
     private readonly terminalId: string,
@@ -114,6 +147,7 @@ export class TerminalStreamController {
   }
 
   sendResize(cols: number, rows: number): void {
+    this.lastResize = { cols, rows };
     if (this.exited) return;
     this.handle?.sendResize(cols, rows);
   }
@@ -162,6 +196,13 @@ export class TerminalStreamController {
           onOpen: () => {
             if (generation !== this.generation) return;
             this.connectionState = "open";
+            // Re-assert the last known size on every (re)connect: a resize
+            // requested before this connect settled (cold-start race) or
+            // before a prior disconnect (normal reconnect) never reached
+            // the new handle otherwise — see `lastResize`'s doc comment.
+            if (this.lastResize) {
+              this.handle?.sendResize(this.lastResize.cols, this.lastResize.rows);
+            }
             this.publish();
           },
           onData: (bytes, frame) => {

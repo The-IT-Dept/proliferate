@@ -4,6 +4,7 @@ import type { TerminalStreamHandle, TerminalStreamOptions } from "@anyharness/sd
 import {
   TERMINAL_RECONNECT_DELAY_MS,
   TerminalStreamController,
+  toTerminalStreamConnectionInfo,
 } from "./terminal-stream-controller";
 
 /**
@@ -135,6 +136,48 @@ describe("TerminalStreamController", () => {
 
     expect(deps.sendSpies[0]).toHaveBeenCalledWith("ls -la\r");
     expect(deps.sendResizeSpies[0]).toHaveBeenCalledWith(120, 40);
+  });
+
+  it("re-sends a resize requested before the handle existed (cold-start race) once the stream opens", async () => {
+    const deps = fakeConnectTerminal();
+    const { controller } = makeController(deps);
+    controller.connect(makeResolveConnection());
+
+    // Simulate the WebView's FitAddon firing its initial resize before
+    // `resolveConnection()` has settled — at this point `this.handle` is
+    // still null, so a naive `handle?.sendResize` would silently drop it.
+    controller.sendResize(100, 30);
+    expect(deps.sendResizeSpies).toHaveLength(0);
+
+    await flushConnect();
+    deps.calls[0]?.onOpen?.();
+
+    expect(deps.sendResizeSpies[0]).toHaveBeenCalledWith(100, 30);
+  });
+
+  it("re-sends the last known resize again on every reconnect's onOpen", async () => {
+    vi.useFakeTimers();
+    try {
+      const deps = fakeConnectTerminal();
+      const { controller } = makeController(deps);
+      controller.connect(makeResolveConnection());
+      await flushConnect();
+      deps.calls[0]?.onOpen?.();
+
+      controller.sendResize(120, 40);
+      expect(deps.sendResizeSpies[0]).toHaveBeenCalledWith(120, 40);
+
+      deps.calls[0]?.onClose?.(new CloseEvent("close"));
+      await vi.advanceTimersByTimeAsync(TERMINAL_RECONNECT_DELAY_MS);
+      await flushConnect();
+
+      expect(deps.calls).toHaveLength(2);
+      deps.calls[1]?.onOpen?.();
+
+      expect(deps.sendResizeSpies[1]).toHaveBeenCalledWith(120, 40);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("onExit marks exited, stops future input, and does not reconnect", async () => {
@@ -295,5 +338,48 @@ describe("TerminalStreamController", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("toTerminalStreamConnectionInfo", () => {
+  it("maps runtimeUrl -> baseUrl and carries authToken/webSocketAuthTransport through unchanged", () => {
+    // This is the one seam whose omission silently breaks terminal auth
+    // (`useTerminalStream` feeds `resolved.connection` straight through it)
+    // — the field it's most important not to drop is
+    // `webSocketAuthTransport`, since a terminal WebSocket connect that
+    // silently loses "protocol" falls back to a transport the runtime may
+    // reject outright.
+    expect(
+      toTerminalStreamConnectionInfo({
+        runtimeUrl: "https://runtime.example",
+        authToken: "tok_abc",
+        webSocketAuthTransport: "protocol",
+      }),
+    ).toEqual({
+      baseUrl: "https://runtime.example",
+      authToken: "tok_abc",
+      webSocketAuthTransport: "protocol",
+    });
+  });
+
+  it("carries a 'query' webSocketAuthTransport through unchanged too", () => {
+    expect(
+      toTerminalStreamConnectionInfo({
+        runtimeUrl: "https://runtime.example",
+        webSocketAuthTransport: "query",
+      }),
+    ).toEqual({
+      baseUrl: "https://runtime.example",
+      authToken: undefined,
+      webSocketAuthTransport: "query",
+    });
+  });
+
+  it("leaves authToken/webSocketAuthTransport undefined when the connection didn't provide them", () => {
+    expect(toTerminalStreamConnectionInfo({ runtimeUrl: "https://runtime.example" })).toEqual({
+      baseUrl: "https://runtime.example",
+      authToken: undefined,
+      webSocketAuthTransport: undefined,
+    });
   });
 });

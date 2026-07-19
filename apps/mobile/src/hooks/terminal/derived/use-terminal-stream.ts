@@ -6,6 +6,7 @@ import {
 
 import {
   TerminalStreamController,
+  toTerminalStreamConnectionInfo,
   type TerminalStreamSnapshot,
 } from "./terminal-stream-controller";
 
@@ -77,11 +78,7 @@ export function useTerminalStream(input: {
 
   const resolveConnection = useCallback(async () => {
     const resolved = await resolveWorkspaceConnectionFromContext(workspaceRef.current);
-    return {
-      baseUrl: resolved.connection.runtimeUrl,
-      authToken: resolved.connection.authToken,
-      webSocketAuthTransport: resolved.connection.webSocketAuthTransport,
-    };
+    return toTerminalStreamConnectionInfo(resolved.connection);
   }, []);
 
   useEffect(() => {
