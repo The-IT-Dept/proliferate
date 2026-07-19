@@ -206,10 +206,20 @@ export function useMobileChatData({
   );
   // The new E1 renderer's row model — the actual TranscriptItem union,
   // mapped straight off the live reduced state (no "Cloud domain"
-  // projection in between). This is what `MobileChatScreen` renders now;
-  // `transcriptView`/`visibleTranscriptRows` below remain only to keep the
-  // pending-prompt queue + permission auto-open sheet (E2/E3 territory)
-  // working unchanged off the same live data.
+  // projection in between). This is what `MobileChatScreen` renders now.
+  // Fix D (E3 Minor, reviewer finding): this comment used to claim
+  // `transcriptView`/`visibleTranscriptRows` below stayed in scope for "the
+  // pending-prompt queue + permission auto-open sheet" — stale on both
+  // counts. The permission auto-open sheet is gone (I2 collapse, deleted
+  // with `use-mobile-chat-permission-sheet.ts`), and the pending-prompt
+  // queue (`useMobilePendingPromptQueue`) reads `stream.transcript.
+  // pendingPrompts` directly in `MobileChatScreen`, never `transcriptView`.
+  // What `transcriptView`/`visibleTranscriptRows` actually still back is
+  // documented where they're consumed in `MobileChatScreen` — the
+  // optimistic-prompt seq-matching in `pendingPromptTranscriptState` below,
+  // and two non-interaction display checks
+  // (`commandMessageShownInTranscript`, `emptyTitle`'s `transcriptView.
+  // source`).
   const liveTranscriptRows = useMemo(
     () => buildLiveTranscriptRows(stream.transcript),
     [stream.transcript],

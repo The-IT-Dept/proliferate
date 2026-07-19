@@ -152,24 +152,6 @@ export function transcriptHasAgentProgressAfterBaseline(
   );
 }
 
-export function latestPendingPromptCommandId(
-  pendingInteractions: readonly CloudPendingInteraction[],
-): string | null {
-  return [...pendingInteractions]
-    .filter((interaction) =>
-      interaction.kind === "send_prompt"
-      && interaction.status === "pending"
-    )
-    .map((interaction) => ({
-      commandId: pendingInteractionCommandId(interaction),
-      requestedSeq: interaction.requestedSeq,
-    }))
-    .filter((candidate): candidate is { commandId: string; requestedSeq: number } =>
-      candidate.commandId !== null
-    )
-    .sort((left, right) => right.requestedSeq - left.requestedSeq)[0]?.commandId ?? null;
-}
-
 export function pendingInteractionMatchesOptimisticPrompt(
   prompt: OptimisticPrompt,
   pendingInteractions: readonly CloudPendingInteraction[],

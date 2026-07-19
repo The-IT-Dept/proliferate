@@ -5,6 +5,10 @@ import {
   ASSISTANT_ITEM_ID,
   CANNED_SESSION_ENVELOPES,
   ERROR_EVENT_ENVELOPE,
+  MCP_ELICITATION_FORM_REQUEST_ID,
+  MCP_ELICITATION_FORM_REQUESTED_ENVELOPE,
+  MCP_ELICITATION_URL_REQUEST_ID,
+  MCP_ELICITATION_URL_REQUESTED_ENVELOPE,
   PERMISSION_REQUEST_ID,
   PLAN_ITEM_ENVELOPE,
   PLAN_ITEM_ID,
@@ -117,6 +121,59 @@ describe("buildLiveTranscriptRows — pending interaction cards", () => {
           isSecret: false,
         },
       ]);
+    }
+  });
+
+  // Fix D (E3 Minor, reviewer finding): mcp_elicitation was the one
+  // interaction kind with no row-mapping coverage — both its url and form
+  // payload shapes carry through `pendingInteractionRow` distinctly (the
+  // whole `McpElicitationInteractionPayload`, `mode` included, becomes the
+  // row's `payload` verbatim).
+  it("appends a mcp_elicitation_interaction row for a url-mode elicitation", () => {
+    const transcript = reduceEvents(
+      [...CANNED_SESSION_ENVELOPES, MCP_ELICITATION_URL_REQUESTED_ENVELOPE],
+      SESSION_ID,
+    );
+    const rows = buildLiveTranscriptRows(transcript);
+    const card = rows.at(-1);
+    expect(card?.kind).toBe("mcp_elicitation_interaction");
+    if (card?.kind === "mcp_elicitation_interaction") {
+      expect(card.requestId).toBe(MCP_ELICITATION_URL_REQUEST_ID);
+      expect(card.id).toBe(`pending-interaction:${MCP_ELICITATION_URL_REQUEST_ID}`);
+      expect(card.title).toBe("Authorize with Linear");
+      expect(card.payload).toEqual({
+        serverName: "linear",
+        mode: {
+          mode: "url",
+          message: "Open this link to authorize.",
+          requiresReveal: true,
+          urlDisplay: "https://linear.app/oauth/authorize",
+        },
+      });
+    }
+  });
+
+  it("appends a mcp_elicitation_interaction row for a form-mode elicitation, with its fields carried through", () => {
+    const transcript = reduceEvents(
+      [...CANNED_SESSION_ENVELOPES, MCP_ELICITATION_FORM_REQUESTED_ENVELOPE],
+      SESSION_ID,
+    );
+    const rows = buildLiveTranscriptRows(transcript);
+    const card = rows.at(-1);
+    expect(card?.kind).toBe("mcp_elicitation_interaction");
+    if (card?.kind === "mcp_elicitation_interaction") {
+      expect(card.requestId).toBe(MCP_ELICITATION_FORM_REQUEST_ID);
+      expect(card.title).toBe("Create a Linear issue");
+      expect(card.payload).toEqual({
+        serverName: "linear",
+        mode: {
+          mode: "form",
+          message: "Fill in the issue details.",
+          fields: [
+            { fieldId: "title", fieldType: "text", label: "Title", required: true },
+          ],
+        },
+      });
     }
   });
 });

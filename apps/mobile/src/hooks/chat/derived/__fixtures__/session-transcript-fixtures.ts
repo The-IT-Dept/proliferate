@@ -275,6 +275,59 @@ export const THOUGHT_ITEM_ENVELOPE: SessionEventEnvelope = envelope(
   { turnId: TURN_ID, itemId: THOUGHT_ITEM_ID },
 );
 
+export const MCP_ELICITATION_URL_REQUEST_ID = "req-mcp-url-1";
+export const MCP_ELICITATION_FORM_REQUEST_ID = "req-mcp-form-1";
+
+/** A standalone `mcp_elicitation` interaction in url mode (`requiresReveal`
+ * — the URL is hidden behind a "Reveal URL" action, not shown directly).
+ * Appended as seq 19 to the canned session above. */
+export const MCP_ELICITATION_URL_REQUESTED_ENVELOPE: SessionEventEnvelope = envelope(
+  19,
+  {
+    type: "interaction_requested",
+    requestId: MCP_ELICITATION_URL_REQUEST_ID,
+    kind: "mcp_elicitation",
+    title: "Authorize with Linear",
+    source: {},
+    payload: {
+      type: "mcp_elicitation",
+      serverName: "linear",
+      mode: {
+        mode: "url",
+        message: "Open this link to authorize.",
+        requiresReveal: true,
+        urlDisplay: "https://linear.app/oauth/authorize",
+      },
+    },
+  },
+  { turnId: TURN_ID },
+);
+
+/** A standalone `mcp_elicitation` interaction in form mode — one required
+ * text field. Appended as seq 20 to the canned session above. */
+export const MCP_ELICITATION_FORM_REQUESTED_ENVELOPE: SessionEventEnvelope = envelope(
+  20,
+  {
+    type: "interaction_requested",
+    requestId: MCP_ELICITATION_FORM_REQUEST_ID,
+    kind: "mcp_elicitation",
+    title: "Create a Linear issue",
+    source: {},
+    payload: {
+      type: "mcp_elicitation",
+      serverName: "linear",
+      mode: {
+        mode: "form",
+        message: "Fill in the issue details.",
+        fields: [
+          { fieldId: "title", fieldType: "text", label: "Title", required: true },
+        ],
+      },
+    },
+  },
+  { turnId: TURN_ID },
+);
+
 export const UNKNOWN_ITEM_ID = "item-unknown-1";
 
 /** An event type the reducer doesn't recognize — falls into the `default`

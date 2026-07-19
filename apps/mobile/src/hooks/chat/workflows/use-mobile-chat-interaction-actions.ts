@@ -41,9 +41,10 @@ import { useMobileToast } from "../../../providers/MobileToastProvider";
  * and leaves the card exactly as it was (nothing to roll back).
  *
  * `resolvingRequestId` tracks the single in-flight request id so a card can
- * disable its own buttons/show a "Sending…" state without needing its own
- * local pending flag — mirrors the pattern `useMobilePendingPromptQueue`
- * uses for queue mutations.
+ * disable its own buttons/show a "Sending" state (verbatim label —
+ * `MobileInteractionCardShell`'s `MobileInteractionCardFooter`, no
+ * ellipsis) without needing its own local pending flag — mirrors the
+ * pattern `useMobilePendingPromptQueue` uses for queue mutations.
  */
 export function useMobileChatInteractionActions({
   sessionId,

@@ -53,8 +53,15 @@ export function MobileMcpElicitationInteractionCard({
   const [revealing, setRevealing] = useState(false);
 
   if (mode.mode === "url") {
+    // Fix D (E3 Minor, reviewer finding): url mode used to carry its own
+    // `setError(null)`/`{error ? ...}` around this action, but nothing in
+    // this branch ever sets `error` to anything but `null` — reveal/accept
+    // failures already surface via `useMobileToast()` inside
+    // `useMobileChatInteractionActions` (`onRevealUrl`/`onAccept`'s own
+    // catch blocks). The shared `error` state below is real, load-bearing
+    // state for form mode's client-side validation message
+    // (`handleSubmit`), which has no toast equivalent — just dead here.
     async function handleReveal() {
-      setError(null);
       setRevealing(true);
       try {
         const url = await onRevealUrl(row.requestId);
@@ -72,7 +79,6 @@ export function MobileMcpElicitationInteractionCard({
           {revealedUrl ? (
             <MobileTextInput value={revealedUrl} editable={false} selectTextOnFocus />
           ) : null}
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
         <MobileInteractionCardFooter
           secondaryActions={[

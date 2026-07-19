@@ -194,7 +194,10 @@ export function buildLiveTranscriptRows(
   // `approvalState` as data (useful, and truthful) independent of this.
   const pending = selectPrimaryPendingInteraction(transcript);
   if (pending) {
-    rows.push(pendingInteractionRow(pending));
+    const pendingRow = pendingInteractionRow(pending);
+    if (pendingRow) {
+      rows.push(pendingRow);
+    }
   }
 
   return rows;
@@ -392,7 +395,7 @@ function previewText(value: string): string | null {
 
 function pendingInteractionRow(
   interaction: PendingInteraction,
-): PermissionInteractionRow | UserInputInteractionRow | McpElicitationInteractionRow {
+): PermissionInteractionRow | UserInputInteractionRow | McpElicitationInteractionRow | null {
   // Stable, requestId-derived id (unchanged prefix from E1) — this is what
   // a future push deep-link handler (`proliferate://workspace/{id}
   // ?interaction={requestId}`) resolves against to scroll/focus the row;
@@ -427,5 +430,15 @@ function pendingInteractionRow(
         title: interaction.title,
         payload: interaction.mcpElicitation,
       };
+    default:
+      // Fix D (E3 Minor, reviewer finding): `interaction.kind` is
+      // exhaustively typed today, but an out-of-union kind used to fall
+      // through this switch with no default and return `undefined` — that
+      // got pushed straight into `rows` (unlike `transcriptItemToRow`
+      // below, whose `| null` + `if (row)` call-site check already guards
+      // this), and a row of `undefined` crashes `keyExtractor` downstream.
+      // Mirrors the defensive default already in `MobileLiveTranscriptRow`
+      // (the RN component) for the same reason.
+      return null;
   }
 }

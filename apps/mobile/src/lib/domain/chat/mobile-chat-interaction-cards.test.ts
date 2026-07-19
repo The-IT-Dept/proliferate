@@ -191,6 +191,17 @@ function multiSelectField(overrides: Partial<Extract<McpElicitationField, { fiel
   };
 }
 
+function singleSelectField(overrides: Partial<Extract<McpElicitationField, { fieldType: "single_select" }>> = {}) {
+  return {
+    fieldType: "single_select" as const,
+    fieldId: "priority",
+    label: "Priority",
+    required: true,
+    options: [{ optionId: "low", label: "Low" }, { optionId: "high", label: "High" }],
+    ...overrides,
+  };
+}
+
 describe("initialMcpElicitationDrafts", () => {
   it("seeds a required boolean field to false", () => {
     expect(initialMcpElicitationDrafts([booleanField({ required: true })])).toEqual({ confirm: false });
@@ -298,5 +309,26 @@ describe("buildMcpElicitationSubmittedFields", () => {
       { fieldId: "name", value: { type: "string", value: "hi" } },
       { fieldId: "confirm2", value: { type: "boolean", value: true } },
     ]);
+  });
+
+  // Fix D (E3 Minor, reviewer finding): single_select was the one field
+  // type with no coverage — every other branch of this function (boolean,
+  // text, number/integer, multi_select) had a submit + a reject test.
+  it("submits a single_select field as an { type: 'option', option_id }", () => {
+    const result = buildMcpElicitationSubmittedFields([singleSelectField()], { priority: "high" });
+    expect(result).toEqual([{ fieldId: "priority", value: { type: "option", option_id: "high" } }]);
+  });
+
+  it("rejects a missing required single_select field", () => {
+    const result = buildMcpElicitationSubmittedFields([singleSelectField()], { priority: "" });
+    expect(result).toBe("Priority is required.");
+  });
+
+  it("skips an optional, unselected single_select field", () => {
+    const result = buildMcpElicitationSubmittedFields(
+      [singleSelectField({ required: false })],
+      { priority: "" },
+    );
+    expect(result).toEqual([]);
   });
 });
