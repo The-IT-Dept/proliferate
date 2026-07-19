@@ -16,17 +16,18 @@ import {
  * `running` | `exited` | `failed`, `anyharness/sdk`'s generated
  * `TerminalRecord.status`) has no dedicated web-UI label anywhere — the web
  * `TerminalTopBar`/`TerminalPanel` only branch on it for read-only/close
- * gating, never render it as text — so "verbatim" here means the raw SDK
- * enum string itself, lower-cased exactly like the design doc's own
- * "connected"/"exited (code)"/"disconnected" copy, never invented labels.
+ * gating, never render it as text — so there's no web copy to mirror
+ * verbatim. This roster-row label is a mobile-only addition, Title-cased for
+ * polish ("Starting"/"Running"/"Exited"/"Failed") rather than echoing the raw
+ * lower-case SDK enum value.
  */
 
 describe("terminalStatusLabel", () => {
-  it("returns the raw TerminalStatus enum value unchanged for each status", () => {
-    expect(terminalStatusLabel("starting")).toBe("starting");
-    expect(terminalStatusLabel("running")).toBe("running");
-    expect(terminalStatusLabel("exited")).toBe("exited");
-    expect(terminalStatusLabel("failed")).toBe("failed");
+  it("returns a Title-cased label for each status", () => {
+    expect(terminalStatusLabel("starting")).toBe("Starting");
+    expect(terminalStatusLabel("running")).toBe("Running");
+    expect(terminalStatusLabel("exited")).toBe("Exited");
+    expect(terminalStatusLabel("failed")).toBe("Failed");
   });
 });
 

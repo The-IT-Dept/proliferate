@@ -13,17 +13,30 @@ import type { TerminalStreamConnectionState } from "../../../hooks/terminal/deri
  *   (`anyharness/sdk`, generated from the OpenAPI `TerminalStatus` enum).
  *   Neither `TerminalTopBar` nor `TerminalPanel` (web) render this as
  *   user-facing text anywhere — they only branch on it (read-only replay,
- *   close-button gating). With no web label to copy, "verbatim" here means
- *   the raw enum string itself, lower-case exactly like the design doc's own
- *   status copy ("connected", "exited (code)", "disconnected") — never an
- *   invented word like "Running"/"Failed".
+ *   close-button gating). With no web label to copy, there's no "verbatim"
+ *   web string to match; this roster-row label is a mobile-only addition
+ *   (the roster is itself mobile-only), so it's Title-cased for polish
+ *   ("Starting"/"Running"/"Exited"/"Failed") rather than echoing the raw
+ *   lower-case SDK enum value.
  * - `TerminalStreamConnectionState` (`terminal-stream-controller.ts`) — this
  *   client's *live WebSocket* state, which is what the mockup's status line
- *   copy ("connected"/"connecting"/"disconnected") actually describes.
+ *   copy ("connected"/"connecting"/"disconnected") actually describes; that
+ *   copy IS verbatim from the design doc and stays lower-case (see
+ *   `terminalConnectionStatusLabel`/`terminalExitedLabel` below).
  */
 
+const TERMINAL_STATUS_TITLE_CASE_LABEL: Record<TerminalStatus, string> = {
+  starting: "Starting",
+  running: "Running",
+  exited: "Exited",
+  failed: "Failed",
+};
+
+/** Title-cased roster-row label for `TerminalRecord.status` — mobile has no
+ * web label to mirror here (see module doc), so this Title-cases the raw
+ * enum for roster polish rather than showing it lower-case. */
 export function terminalStatusLabel(status: TerminalStatus): string {
-  return status;
+  return TERMINAL_STATUS_TITLE_CASE_LABEL[status];
 }
 
 export type TerminalStatusTone = "positive" | "default" | "muted" | "danger";
