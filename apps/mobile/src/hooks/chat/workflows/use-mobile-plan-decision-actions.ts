@@ -47,6 +47,16 @@ import { useMobileToast } from "../../../providers/MobileToastProvider";
  * dialog on web (`ConnectedPlanHandoffDialog`/`use-plan-handoff-workflow.ts`,
  * ~550 lines across the dialog + workflow) built on `useHandoffPlanMutation`
  * — a materially separate subsystem, not a small addition to this hook.
+ *
+ * Fix 2 (reviewer finding): a single `decidingPlanId` used to drive
+ * `busy`/"Sending" on the Approve button alone, so tapping Reject wrongly
+ * flipped Approve into its busy state while Reject showed no progress.
+ * `decidingAction` (alongside `decidingPlanId`) now tracks *which* action
+ * is in flight for the plan currently deciding — matching web's separate
+ * `isApprovingPlan`/`isRejectingPlan` (`use-proposed-plan-actions.ts`) —
+ * so the caller can drive each button from its own action while `deciding`
+ * (either action, unchanged) still drives the shared double-tap-guard
+ * `disabled` on both buttons.
  */
 export function useMobilePlanDecisionActions({
   workspace,
@@ -58,10 +68,11 @@ export function useMobilePlanDecisionActions({
   const approveMutation = useApprovePlanMutation();
   const rejectMutation = useRejectPlanMutation();
   const toast = useMobileToast();
-  const [decidingPlanId, setDecidingPlanId] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState<{ planId: string; action: "approve" | "reject" } | null>(null);
 
   const decide = useCallback(
     async (
+      action: "approve" | "reject",
       mutate: (input: { planId: string; expectedDecisionVersion: number }) => Promise<unknown>,
       planId: string,
       decisionVersion: number,
@@ -72,7 +83,7 @@ export function useMobilePlanDecisionActions({
         toast.show({ tone: "error", message: blockReason });
         return;
       }
-      setDecidingPlanId(planId);
+      setDeciding({ planId, action });
       try {
         await mutate({ planId, ...buildPlanDecisionRequest(decisionVersion) });
       } catch (error) {
@@ -81,7 +92,7 @@ export function useMobilePlanDecisionActions({
           message: error instanceof Error ? error.message : failureMessage,
         });
       } finally {
-        setDecidingPlanId((current) => (current === planId ? null : current));
+        setDeciding((current) => (current?.planId === planId ? null : current));
       }
     },
     [toast, workspace, isUnclaimed],
@@ -89,18 +100,19 @@ export function useMobilePlanDecisionActions({
 
   const approvePlan = useCallback(
     (planId: string, decisionVersion: number) =>
-      decide(approveMutation.mutateAsync, planId, decisionVersion, "Failed to approve plan."),
+      decide("approve", approveMutation.mutateAsync, planId, decisionVersion, "Failed to approve plan."),
     [decide, approveMutation.mutateAsync],
   );
 
   const rejectPlan = useCallback(
     (planId: string, decisionVersion: number) =>
-      decide(rejectMutation.mutateAsync, planId, decisionVersion, "Failed to reject plan."),
+      decide("reject", rejectMutation.mutateAsync, planId, decisionVersion, "Failed to reject plan."),
     [decide, rejectMutation.mutateAsync],
   );
 
   return {
-    decidingPlanId,
+    decidingPlanId: deciding?.planId ?? null,
+    decidingAction: deciding?.action ?? null,
     approvePlan,
     rejectPlan,
   };

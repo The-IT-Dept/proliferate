@@ -48,15 +48,19 @@ export function MobileLiveTranscriptRow({
       return <ToolCallRow row={row} />;
     case "plan":
       return <PlanRow row={row} />;
-    case "proposed_plan":
+    case "proposed_plan": {
+      const isDecidingThisPlan = planDecisionActions.decidingPlanId === row.planId;
       return (
         <ProposedPlanRow
           row={row}
-          deciding={planDecisionActions.decidingPlanId === row.planId}
+          deciding={isDecidingThisPlan}
+          approving={isDecidingThisPlan && planDecisionActions.decidingAction === "approve"}
+          rejecting={isDecidingThisPlan && planDecisionActions.decidingAction === "reject"}
           onApprove={planDecisionActions.approvePlan}
           onReject={planDecisionActions.rejectPlan}
         />
       );
+    }
     case "error":
       return <ErrorRow row={row} />;
     case "permission_interaction":
@@ -179,19 +183,35 @@ function PlanRow({ row }: { row: Extract<TranscriptRowViewModel, { kind: "plan" 
  * reviewer finding: no chip while the plan body is still streaming and no
  * decision has arrived yet) plus, while a decision is actionable, an
  * Approve/Reject footer (reusing the shared interaction-card footer — same
- * secondary-left/primary-right layout and busy-state convention as the
- * permission/user_input/mcp elicitation cards, not a forked one-off). A
- * native-continuation failure gets its own destructive note line under the
- * header, matching web.
+ * secondary-left/primary-right layout as the permission/user_input/mcp
+ * elicitation cards, not a forked one-off). A native-continuation failure
+ * gets its own destructive note line under the header, matching web.
+ *
+ * Fix 2 (reviewer finding): `deciding` alone used to drive `busy` on the
+ * Approve button, so tapping Reject wrongly flipped Approve into its
+ * "Sending" state. `approving`/`rejecting` (derived from the hook's
+ * `decidingAction`, one call site up) now drive each button from its own
+ * in-flight action; `deciding` (either action in flight) still drives the
+ * shared `disabled` double-tap guard on both buttons. The shared footer
+ * shell only swaps a *primary* button's label to "Sending" while busy
+ * (`MobileInteractionCardShell.tsx`) — there's no secondary-button busy
+ * affordance there for Reject to plug into (every other card's secondary
+ * actions are still just plain taps), so Reject's own progress reuses that
+ * same "Sending" word via its label here rather than growing the shared
+ * shell's contract for this one caller.
  */
 function ProposedPlanRow({
   row,
   deciding,
+  approving,
+  rejecting,
   onApprove,
   onReject,
 }: {
   row: Extract<TranscriptRowViewModel, { kind: "proposed_plan" }>;
   deciding: boolean;
+  approving: boolean;
+  rejecting: boolean;
   onApprove: (planId: string, decisionVersion: number) => void;
   onReject: (planId: string, decisionVersion: number) => void;
 }) {
@@ -215,10 +235,10 @@ function ProposedPlanRow({
         <MobileInteractionCardFooter
           disabled={deciding}
           secondaryActions={actions.canReject
-            ? [{ label: "Reject", onPress: () => onReject(row.planId, decisionVersion) }]
+            ? [{ label: rejecting ? "Sending" : "Reject", onPress: () => onReject(row.planId, decisionVersion) }]
             : []}
           primaryAction={actions.canApprove
-            ? { label: "Approve", onPress: () => onApprove(row.planId, decisionVersion), busy: deciding }
+            ? { label: "Approve", onPress: () => onApprove(row.planId, decisionVersion), busy: approving }
             : undefined}
         />
       ) : null}
