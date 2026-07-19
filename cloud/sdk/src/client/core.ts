@@ -111,7 +111,13 @@ export function createProliferateErrorMiddleware(): Middleware {
           null,
         );
       }
-      return response;
+      // Return undefined (not `response`) to signal "leave the response
+      // unmodified". openapi-fetch >=0.15 throws "onResponse: must return new
+      // Response() when modifying the response" if a middleware returns the SAME
+      // response object — returning the response here made EVERY 2xx request
+      // throw under openapi-fetch 0.17 (which this package resolves), so no data
+      // ever reached a caller. undefined is the correct no-op in all versions.
+      return undefined;
     },
   };
 }
