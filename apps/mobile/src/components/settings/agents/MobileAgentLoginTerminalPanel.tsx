@@ -146,8 +146,22 @@ function MobileAgentLoginTerminalStream({
     onData: handleData,
   });
 
+  // Guards the exit effect below against firing its "process exited" notice
+  // (and the onExit refetch) more than once for this terminal. `onExit` is
+  // an inline, unstable prop (recreated by the parent screen's own
+  // re-render — see MobileAgentAuthDetailScreen's
+  // `onExit={(exitedKind, code) => ...}`), so it's an effect dependency
+  // that changes on renders unrelated to the terminal's exit; without this
+  // guard, any such re-render while `stream.exited` stays true re-runs the
+  // effect and double-fires. A plain component-lifetime ref is enough here
+  // (not module state) — this component fully remounts per terminal session
+  // (keyed by terminalId + rendererEpoch in the parent), so the ref starts
+  // fresh exactly when a NEW terminal's exit should be able to fire again.
+  const hasFiredExitRef = useRef(false);
+
   useEffect(() => {
-    if (stream.exited) {
+    if (stream.exited && !hasFiredExitRef.current) {
+      hasFiredExitRef.current = true;
       viewRef.current?.writeExitNotice(stream.exitCode);
       onExit(session.kind, stream.exitCode);
     }
