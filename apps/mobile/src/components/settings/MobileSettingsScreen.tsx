@@ -14,9 +14,12 @@ import {
   billingPlanTitle,
   billingUsageLine,
   initialsForMobileSettingsName,
+  mobileGoogleAccountLabel,
+  mobilePersonalSecretsSummary,
   mobileSectionLabels,
   type MobileSettingsAccountSummary,
 } from "../../lib/domain/settings/mobile-settings-presentation";
+import { MOBILE_APP_VERSION } from "../../lib/domain/settings/mobile-app-version";
 import { MobileScreen } from "../primitives/MobileLayout";
 import { MobileAddRepositoryModal } from "./screen/MobileAddRepositoryModal";
 import {
@@ -87,6 +90,12 @@ export function MobileSettingsScreen({ account, onSignOut, onOpenAgents }: Mobil
           }
         />
         <MobileSettingsRow
+          icon="google"
+          title="Google"
+          value={mobileGoogleAccountLabel(settingsModel.linkedProviders, settingsModel.providerAvailability)}
+          valueTone="muted"
+        />
+        <MobileSettingsRow
           icon="lock"
           title="Email/password"
           value={settingsModel.passwordStateLabel}
@@ -122,6 +131,20 @@ export function MobileSettingsScreen({ account, onSignOut, onOpenAgents }: Mobil
           subtitle="Pick from your GitHub repos"
           onPress={() => setAddRepoOpen(true)}
           chevron
+        />
+      </MobileSettingsSection>
+
+      <MobileSettingsSection label={sectionLabels.personalSecrets}>
+        <MobileSettingsRow
+          icon="lock"
+          title="Personal secrets"
+          subtitle="Env vars and files available to your cloud sandboxes"
+          value={mobilePersonalSecretsSummary(
+            settingsModel.personalSecrets.data,
+            settingsModel.personalSecrets.isLoading,
+            settingsModel.personalSecrets.isError,
+          )}
+          valueTone="muted"
         />
       </MobileSettingsSection>
 
@@ -204,7 +227,7 @@ export function MobileSettingsScreen({ account, onSignOut, onOpenAgents }: Mobil
         </Pressable>
       </View>
 
-      <Text style={styles.footer}>Proliferate · 0.1.0</Text>
+      <Text style={styles.footer}>Proliferate · {MOBILE_APP_VERSION}</Text>
 
       <MobileAddRepositoryModal
         visible={addRepoOpen}

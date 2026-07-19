@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   useAuthViewer,
   useCloudBilling,
+  useCloudSecrets,
   useRepositories,
   useOrganizations,
 } from "@proliferate/cloud-sdk-react";
@@ -13,6 +14,7 @@ export function useMobileSettingsModel(account: MobileSettingsAccountSummary) {
   const organizations = useOrganizations();
   const billing = useCloudBilling({ ownerScope: "personal" });
   const repoConfigs = useRepositories();
+  const personalSecrets = useCloudSecrets({ kind: "personal" });
 
   const displayName =
     viewer.data?.user.display_name?.trim()
@@ -68,10 +70,13 @@ export function useMobileSettingsModel(account: MobileSettingsAccountSummary) {
     githubConnected,
     githubNeedsAttention,
     githubStateLabel,
+    linkedProviders: viewer.data?.linkedProviders ?? [],
+    providerAvailability: viewer.data?.providerAvailability ?? [],
     organizations,
     organizationRows,
     passwordEnabled,
     passwordStateLabel,
+    personalSecrets,
     repoConfigs,
     viewer,
   };
