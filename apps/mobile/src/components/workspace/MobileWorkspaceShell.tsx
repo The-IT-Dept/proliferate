@@ -11,7 +11,7 @@ import { MobileChatScreen } from "../chat/MobileChatScreen";
 import { MobileWorkspaceSegmentedControl } from "./MobileWorkspaceSegmentedControl";
 import { MobileWorkspaceSessions } from "./MobileWorkspaceSessions";
 import { MobileWorkspaceTerminalSegment } from "./MobileWorkspaceTerminalSegment";
-import { MobileWorkspaceSegmentPlaceholder } from "./MobileWorkspaceSegmentPlaceholder";
+import { MobileWorkspaceDiffSegment } from "./MobileWorkspaceDiffSegment";
 import type { MobileCloudChat } from "../../lib/domain/workspace/mobile-workspace-chat";
 import {
   defaultWorkspaceSegment,
@@ -53,8 +53,10 @@ const CHROME_HEIGHT_ESTIMATE = 110;
  * yields the native header to the shell. Sessions is the real Group D surface;
  * Term is the Group F spike's minimal one-terminal attach (unlike Chat, its
  * body is only rendered while active — connectTerminal connects on mount and
- * closes on unmount, no warm-in-background pause); Diff (Group G) is still an
- * honest "coming" placeholder.
+ * closes on unmount, no warm-in-background pause); Diff (Group G) is the
+ * workspace's changes list + native diff viewer + PR status, same
+ * only-rendered-while-active discipline as Term (read-only, no live
+ * connection to keep warm in the background).
  */
 export function MobileWorkspaceShell({
   chat,
@@ -147,12 +149,7 @@ export function MobileWorkspaceShell({
 
       {segment === "diff" ? (
         <View style={StyleSheet.absoluteFill}>
-          <MobileWorkspaceSegmentPlaceholder
-            icon="git-branch"
-            title="Changes"
-            body="Review the working tree, per-file diffs, and PR status. Landing in an upcoming update."
-            topInset={bodyTopInset}
-          />
+          <MobileWorkspaceDiffSegment topInset={bodyTopInset} />
         </View>
       ) : null}
 
