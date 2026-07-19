@@ -25,6 +25,7 @@ import { useMobileChatData } from "../../hooks/chat/derived/use-mobile-chat-data
 import { useMobileChatLifecycle } from "../../hooks/chat/lifecycle/use-mobile-chat-lifecycle";
 import { useMobileChatActions } from "../../hooks/chat/workflows/use-mobile-chat-actions";
 import { useMobileChatInteractionActions } from "../../hooks/chat/workflows/use-mobile-chat-interaction-actions";
+import { useMobilePlanDecisionActions } from "../../hooks/chat/workflows/use-mobile-plan-decision-actions";
 import { useMobileChatInterrupt } from "../../hooks/chat/workflows/use-mobile-chat-interrupt";
 import { useMobilePendingPromptQueue } from "../../hooks/chat/workflows/use-mobile-pending-prompt-queue";
 import { MobileWorkspaceActionSheet } from "./MobileWorkspaceActionSheet";
@@ -179,6 +180,14 @@ export function MobileChatScreen({
   const isUnclaimed = false;
   const interactionActions = useMobileChatInteractionActions({
     sessionId: session?.sessionId ?? null,
+    workspace,
+    isUnclaimed,
+  });
+  // Row 20 — plan Approve/Reject. A sibling of `interactionActions`, not a
+  // part of it: it wraps `useApprovePlanMutation`/`useRejectPlanMutation`
+  // (workspace-scoped plan endpoints), not
+  // `useResolveSessionInteractionMutation` — see that hook's module doc.
+  const planDecisionActions = useMobilePlanDecisionActions({
     workspace,
     isUnclaimed,
   });
@@ -410,6 +419,7 @@ export function MobileChatScreen({
       <MobileLiveTranscriptList
         rows={liveTranscriptRows}
         interactionActions={interactionActions}
+        planDecisionActions={planDecisionActions}
         composerDockInset={insets.bottom + composerDockHeight}
         focusRequestId={chat.initialInteractionRequestId}
         emptyTitle={emptyTitle}

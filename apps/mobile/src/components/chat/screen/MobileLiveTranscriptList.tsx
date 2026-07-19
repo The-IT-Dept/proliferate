@@ -4,6 +4,7 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 import type { TranscriptRowViewModel } from "../../../lib/domain/chat/mobile-live-transcript-view";
 import { focusedInteractionRowIndex } from "../../../lib/domain/chat/mobile-chat-interaction-focus";
 import type { MobileChatInteractionActions } from "../../../hooks/chat/workflows/use-mobile-chat-interaction-actions";
+import type { MobilePlanDecisionActions } from "../../../hooks/chat/workflows/use-mobile-plan-decision-actions";
 import { MobileLiveTranscriptRow } from "./MobileLiveTranscriptRow";
 import { colors, radius, spacing } from "../../../styles/tokens";
 
@@ -12,6 +13,12 @@ interface MobileLiveTranscriptListProps {
   emptyTitle: string;
   emptyBody: string;
   interactionActions: MobileChatInteractionActions;
+  /** Row 20 — Approve/Reject for the `proposed_plan` row's decision
+   * footer. Kept as its own prop (not folded into `interactionActions`)
+   * since it wraps a different mutation pair
+   * (`useApprovePlanMutation`/`useRejectPlanMutation`, not
+   * `useResolveSessionInteractionMutation`) — see that hook's module doc. */
+  planDecisionActions: MobilePlanDecisionActions;
   /**
    * Group E2 carryover — the sticky composer dock's rendered footprint
    * (its own measured height plus the bottom safe-area inset it sits
@@ -56,6 +63,7 @@ export function MobileLiveTranscriptList({
   emptyTitle,
   emptyBody,
   interactionActions,
+  planDecisionActions,
   composerDockInset,
   focusRequestId,
 }: MobileLiveTranscriptListProps) {
@@ -109,7 +117,11 @@ export function MobileLiveTranscriptList({
       data={rows}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => (
-        <MobileLiveTranscriptRow row={item} interactionActions={interactionActions} />
+        <MobileLiveTranscriptRow
+          row={item}
+          interactionActions={interactionActions}
+          planDecisionActions={planDecisionActions}
+        />
       )}
       onScrollToIndexFailed={(info) => {
         // FlatList can't jump straight to an index it hasn't measured yet

@@ -49,6 +49,21 @@ import { describeToolCallDisplay } from "@proliferate/product-domain/chats/tools
  * (`ProposedPlanRow` below, via its `decisionState`), not a generic
  * interaction card. Nothing here needs to special-case it.
  *
+ * Row 20 — acting on that decision (Approve/Reject) is a *different* wire
+ * call than the generic interaction cards below: `client.plans.approve`/
+ * `.reject` (workspace-scoped `/plans/{planId}/approve|reject`, carrying
+ * `expectedDecisionVersion`), never `client.sessions.resolveInteraction`.
+ * `ProposedPlanRow` carries `planId`/`decisionVersion`/
+ * `nativeResolutionState`/`errorMessage`/`nativeContinuation` — everything
+ * `mobile-proposed-plan-decision.ts`'s pure derivations and the
+ * `useMobilePlanDecisionActions` hook need to render and wire up the
+ * Approve/Reject footer, mirroring web's `ProposedPlanCard.tsx` +
+ * `use-proposed-plan-actions.ts`. "Run here"/"New session" (carrying out an
+ * approved plan) are a separate, materially larger subsystem on web — mode
+ * switching, prompt-attachment building, and (for "New session") a whole
+ * workspace/session-picker dialog flow — and are not built here; see that
+ * hook's module doc for specifics.
+ *
  * E3 — when there's a pending interaction that isn't already visible as a
  * tool call's `approvalState` badge (a `permission` request not tied to a
  * tool call, or any `user_input`/`mcp_elicitation` request), this module
@@ -112,9 +127,30 @@ export interface PlanRow extends RowBase {
 
 export interface ProposedPlanRow extends RowBase {
   kind: "proposed_plan";
+  /** `ProposedPlanContentPart.planId` — the path param for
+   * `client.plans.approve`/`.reject`/`.get` (Row 20's decision actions). */
+  planId: string;
   title: string;
   bodyMarkdown: string;
   decisionState: "pending" | "approved" | "rejected" | "superseded";
+  /** Optimistic-concurrency token for `PlanDecisionRequest.
+   * expectedDecisionVersion` — `null` until a `proposed_plan_decision`
+   * content part has actually arrived (no decision content part yet means
+   * nothing safe to send: see `resolveProposedPlanDecisionActions`). */
+  decisionVersion: number | null;
+  nativeResolutionState:
+    | "none"
+    | "pending_link"
+    | "pending_resolution"
+    | "finalized"
+    | "failed"
+    | null;
+  errorMessage: string | null;
+  /** `Boolean(item.plan.sourceToolCallId)` — mirrors web's
+   * `ConnectedProposedPlanItem`'s `nativeContinuation` prop: whether this
+   * plan came from a native (harness-side) tool call rather than a
+   * structured mode switch, which gates the retry-Approve path. */
+  nativeContinuation: boolean;
 }
 
 export interface ErrorRow extends RowBase {
@@ -287,9 +323,14 @@ function proposedPlanRow(item: ProposedPlanItem): ProposedPlanRow {
     id: item.itemId,
     turnId: item.turnId,
     kind: "proposed_plan",
+    planId: item.plan.planId,
     title: item.plan.title || "Plan",
     bodyMarkdown: item.plan.bodyMarkdown,
     decisionState: item.decision?.decisionState ?? "pending",
+    decisionVersion: item.decision?.decisionVersion ?? null,
+    nativeResolutionState: item.decision?.nativeResolutionState ?? null,
+    errorMessage: item.decision?.errorMessage ?? null,
+    nativeContinuation: Boolean(item.plan.sourceToolCallId),
   };
 }
 

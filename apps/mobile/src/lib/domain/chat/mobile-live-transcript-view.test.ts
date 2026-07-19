@@ -12,8 +12,12 @@ import {
   PERMISSION_REQUEST_ID,
   PLAN_ITEM_ENVELOPE,
   PLAN_ITEM_ID,
+  PROPOSED_PLAN_DECISION_FAILED_ENVELOPE,
+  PROPOSED_PLAN_DECISION_PENDING_ENVELOPE,
   PROPOSED_PLAN_ITEM_ENVELOPE,
   PROPOSED_PLAN_ITEM_ID,
+  PROPOSED_PLAN_NATIVE_ITEM_ENVELOPE,
+  PROPOSED_PLAN_NATIVE_ITEM_ID,
   SESSION_ID,
   THOUGHT_ITEM_ENVELOPE,
   THOUGHT_ITEM_ID,
@@ -208,6 +212,73 @@ describe("buildLiveTranscriptRows — plan, proposed_plan, and error items", () 
       expect(proposedRow.title).toBe("Ship the fix");
       expect(proposedRow.bodyMarkdown).toBe("1. Patch the parser\n2. Add a test");
       expect(proposedRow.decisionState).toBe("pending");
+      // Row 20 — before any `proposed_plan_decision` content part has
+      // arrived, there's nothing yet to send `expectedDecisionVersion`
+      // with, so the row carries a null version (Approve/Reject stay
+      // hidden until a real version shows up).
+      expect(proposedRow.planId).toBe("plan-1");
+      expect(proposedRow.decisionVersion).toBeNull();
+      expect(proposedRow.nativeResolutionState).toBeNull();
+      expect(proposedRow.errorMessage).toBeNull();
+      expect(proposedRow.nativeContinuation).toBe(false);
+    }
+  });
+
+  it("Row 20 — carries a proposed_plan's decision fields (planId/version/native state) once the decision content part arrives", () => {
+    const transcript = reduceEvents(
+      [
+        ...CANNED_SESSION_ENVELOPES,
+        PROPOSED_PLAN_ITEM_ENVELOPE,
+        PROPOSED_PLAN_DECISION_PENDING_ENVELOPE,
+      ],
+      SESSION_ID,
+    );
+    const rows = buildLiveTranscriptRows(transcript);
+    const proposedRow = rows.find((row) => row.id === PROPOSED_PLAN_ITEM_ID);
+    expect(proposedRow?.kind).toBe("proposed_plan");
+    if (proposedRow?.kind === "proposed_plan") {
+      expect(proposedRow.decisionState).toBe("pending");
+      expect(proposedRow.planId).toBe("plan-1");
+      expect(proposedRow.decisionVersion).toBe(1);
+      expect(proposedRow.nativeResolutionState).toBe("none");
+      expect(proposedRow.errorMessage).toBeNull();
+    }
+  });
+
+  it("Row 20 — a later decision version overrides the earlier one (approved, native resolution failed, error message carried through)", () => {
+    const transcript = reduceEvents(
+      [
+        ...CANNED_SESSION_ENVELOPES,
+        PROPOSED_PLAN_ITEM_ENVELOPE,
+        PROPOSED_PLAN_DECISION_PENDING_ENVELOPE,
+        PROPOSED_PLAN_DECISION_FAILED_ENVELOPE,
+      ],
+      SESSION_ID,
+    );
+    const rows = buildLiveTranscriptRows(transcript);
+    const proposedRow = rows.find((row) => row.id === PROPOSED_PLAN_ITEM_ID);
+    expect(proposedRow?.kind).toBe("proposed_plan");
+    if (proposedRow?.kind === "proposed_plan") {
+      expect(proposedRow.decisionState).toBe("approved");
+      expect(proposedRow.decisionVersion).toBe(2);
+      expect(proposedRow.nativeResolutionState).toBe("failed");
+      expect(proposedRow.errorMessage).toBe("agent crashed mid-run");
+    }
+  });
+
+  it("Row 20 — nativeContinuation is true when the plan's sourceToolCallId is set", () => {
+    const transcript = reduceEvents(
+      [...CANNED_SESSION_ENVELOPES, PROPOSED_PLAN_NATIVE_ITEM_ENVELOPE],
+      SESSION_ID,
+    );
+    const rows = buildLiveTranscriptRows(transcript);
+    const proposedRow = rows.find((row) => row.id === PROPOSED_PLAN_NATIVE_ITEM_ID);
+    expect(proposedRow?.kind).toBe("proposed_plan");
+    if (proposedRow?.kind === "proposed_plan") {
+      expect(proposedRow.nativeContinuation).toBe(true);
+      expect(proposedRow.decisionState).toBe("approved");
+      expect(proposedRow.decisionVersion).toBe(2);
+      expect(proposedRow.nativeResolutionState).toBe("pending_link");
     }
   });
 

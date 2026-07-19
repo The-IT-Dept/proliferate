@@ -220,6 +220,90 @@ export const PROPOSED_PLAN_ITEM_ENVELOPE: SessionEventEnvelope = envelope(
   { turnId: TURN_ID, itemId: PROPOSED_PLAN_ITEM_ID },
 );
 
+/** Row 20 (plan decisions) — a `proposed_plan_decision` content part
+ * appended to `PROPOSED_PLAN_ITEM_ENVELOPE`'s item via `item_delta`, the
+ * real mechanism a decision arrives through (mirrors how the assistant
+ * text/reasoning deltas above append content parts, not a full item
+ * replace). Same `planId` ("plan-1") as the proposed_plan item above. */
+export const PROPOSED_PLAN_DECISION_PENDING_ENVELOPE: SessionEventEnvelope = envelope(
+  21,
+  {
+    type: "item_delta",
+    delta: {
+      appendContentParts: [
+        {
+          type: "proposed_plan_decision",
+          planId: "plan-1",
+          decisionState: "pending",
+          decisionVersion: 1,
+          nativeResolutionState: "none",
+        },
+      ],
+    },
+  },
+  { turnId: TURN_ID, itemId: PROPOSED_PLAN_ITEM_ID },
+);
+
+/** Row 20 — a later decision version on the same plan: approved, but its
+ * native continuation (the harness-side ExitPlanMode link-up) failed, with
+ * an error message. */
+export const PROPOSED_PLAN_DECISION_FAILED_ENVELOPE: SessionEventEnvelope = envelope(
+  22,
+  {
+    type: "item_delta",
+    delta: {
+      appendContentParts: [
+        {
+          type: "proposed_plan_decision",
+          planId: "plan-1",
+          decisionState: "approved",
+          decisionVersion: 2,
+          nativeResolutionState: "failed",
+          errorMessage: "agent crashed mid-run",
+        },
+      ],
+    },
+  },
+  { turnId: TURN_ID, itemId: PROPOSED_PLAN_ITEM_ID },
+);
+
+export const PROPOSED_PLAN_NATIVE_ITEM_ID = "item-proposed-plan-native-1";
+
+/** Row 20 — a proposed_plan item with `sourceToolCallId` set (a plan that
+ * came from a native ExitPlanMode-style tool call rather than a structured
+ * mode switch) — drives `nativeContinuation`/the retry-Approve path. */
+export const PROPOSED_PLAN_NATIVE_ITEM_ENVELOPE: SessionEventEnvelope = envelope(
+  23,
+  {
+    type: "item_started",
+    item: {
+      kind: "proposed_plan",
+      status: "completed",
+      sourceAgentKind: "claude",
+      contentParts: [
+        {
+          type: "proposed_plan",
+          planId: "plan-2",
+          title: "Ship the native fix",
+          bodyMarkdown: "1. Patch the parser",
+          snapshotHash: "hash-2",
+          sourceSessionId: SESSION_ID,
+          sourceKind: "mode_switch",
+          sourceToolCallId: "tool-native-1",
+        },
+        {
+          type: "proposed_plan_decision",
+          planId: "plan-2",
+          decisionState: "approved",
+          decisionVersion: 2,
+          nativeResolutionState: "pending_link",
+        },
+      ],
+    },
+  },
+  { turnId: TURN_ID, itemId: PROPOSED_PLAN_NATIVE_ITEM_ID },
+);
+
 /** A top-level `error` session event (distinct from an `error_item` transcript
  * item payload) — the reducer turns this into an `ErrorItem` directly. */
 export const ERROR_EVENT_ENVELOPE: SessionEventEnvelope = envelope(16, {

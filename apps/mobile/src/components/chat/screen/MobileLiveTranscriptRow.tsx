@@ -1,16 +1,24 @@
 import { Platform, StyleSheet, Text, View } from "react-native";
 
 import type { TranscriptRowViewModel } from "../../../lib/domain/chat/mobile-live-transcript-view";
+import {
+  resolveProposedPlanDecisionActions,
+  resolveProposedPlanDecisionStatus,
+  resolveProposedPlanFailureMessage,
+} from "../../../lib/domain/chat/mobile-proposed-plan-decision";
 import type { MobileChatInteractionActions } from "../../../hooks/chat/workflows/use-mobile-chat-interaction-actions";
+import type { MobilePlanDecisionActions } from "../../../hooks/chat/workflows/use-mobile-plan-decision-actions";
 import { MobileMarkdownText } from "../MobileMarkdownText";
 import { colors, radius, spacing } from "../../../styles/tokens";
 import { MobilePermissionInteractionCard } from "./interactions/MobilePermissionInteractionCard";
 import { MobileUserInputInteractionCard } from "./interactions/MobileUserInputInteractionCard";
 import { MobileMcpElicitationInteractionCard } from "./interactions/MobileMcpElicitationInteractionCard";
+import { MobileInteractionCardFooter } from "./interactions/MobileInteractionCardShell";
 
 interface MobileLiveTranscriptRowProps {
   row: TranscriptRowViewModel;
   interactionActions: MobileChatInteractionActions;
+  planDecisionActions: MobilePlanDecisionActions;
 }
 
 /**
@@ -23,7 +31,11 @@ interface MobileLiveTranscriptRowProps {
  * exception: real cards with buttons/fields, wired to
  * `interactionActions` (`useMobileChatInteractionActions`).
  */
-export function MobileLiveTranscriptRow({ row, interactionActions }: MobileLiveTranscriptRowProps) {
+export function MobileLiveTranscriptRow({
+  row,
+  interactionActions,
+  planDecisionActions,
+}: MobileLiveTranscriptRowProps) {
   switch (row.kind) {
     case "user_message":
       return <UserMessageRow row={row} />;
@@ -36,7 +48,14 @@ export function MobileLiveTranscriptRow({ row, interactionActions }: MobileLiveT
     case "plan":
       return <PlanRow row={row} />;
     case "proposed_plan":
-      return <ProposedPlanRow row={row} />;
+      return (
+        <ProposedPlanRow
+          row={row}
+          deciding={planDecisionActions.decidingPlanId === row.planId}
+          onApprove={planDecisionActions.approvePlan}
+          onReject={planDecisionActions.rejectPlan}
+        />
+      );
     case "error":
       return <ErrorRow row={row} />;
     case "permission_interaction":
@@ -152,20 +171,66 @@ function PlanRow({ row }: { row: Extract<TranscriptRowViewModel, { kind: "plan" 
   );
 }
 
+/**
+ * Row 20 — mirrors web's `ProposedPlanCard.tsx`: a status chip (fixed
+ * Title-case vocabulary, verbatim from `resolveProposedPlanDecisionStatus`)
+ * plus, while a decision is actionable, an Approve/Reject footer (reusing
+ * the shared interaction-card footer — same secondary-left/primary-right
+ * layout and busy-state convention as the permission/user_input/mcp
+ * elicitation cards, not a forked one-off). A native-continuation failure
+ * gets its own destructive note line under the header, matching web.
+ */
 function ProposedPlanRow({
   row,
+  deciding,
+  onApprove,
+  onReject,
 }: {
   row: Extract<TranscriptRowViewModel, { kind: "proposed_plan" }>;
+  deciding: boolean;
+  onApprove: (planId: string, decisionVersion: number) => void;
+  onReject: (planId: string, decisionVersion: number) => void;
 }) {
+  const status = resolveProposedPlanDecisionStatus(row);
+  const actions = resolveProposedPlanDecisionActions(row);
+  const failureMessage = resolveProposedPlanFailureMessage(row);
+  const decisionVersion = row.decisionVersion;
+
   return (
     <View style={styles.planCard}>
       <View style={styles.toolHeaderRow}>
         <Text style={styles.toolTitle} numberOfLines={1}>{row.title}</Text>
-        <Text style={styles.toolStatus}>{formatStatus(row.decisionState)}</Text>
+        <Text style={[styles.planStatusLabel, planStatusToneStyle(status.tone)]}>{status.label}</Text>
       </View>
       <MobileMarkdownText content={row.bodyMarkdown} />
+      {failureMessage ? <Text style={styles.planFailureMessage}>{failureMessage}</Text> : null}
+      {decisionVersion !== null && (actions.canApprove || actions.canReject) ? (
+        <MobileInteractionCardFooter
+          disabled={deciding}
+          secondaryActions={actions.canReject
+            ? [{ label: "Reject", onPress: () => onReject(row.planId, decisionVersion) }]
+            : []}
+          primaryAction={actions.canApprove
+            ? { label: "Approve", onPress: () => onApprove(row.planId, decisionVersion), busy: deciding }
+            : undefined}
+        />
+      ) : null}
     </View>
   );
+}
+
+function planStatusToneStyle(tone: ReturnType<typeof resolveProposedPlanDecisionStatus>["tone"]) {
+  switch (tone) {
+    case "warning":
+      return { color: colors.warning };
+    case "destructive":
+      return { color: colors.red };
+    case "muted":
+      return { color: colors.mutedText };
+    case "neutral":
+    default:
+      return { color: colors.fg };
+  }
 }
 
 function ErrorRow({ row }: { row: Extract<TranscriptRowViewModel, { kind: "error" }> }) {
@@ -291,6 +356,19 @@ const styles = StyleSheet.create({
     color: colors.fg,
     fontSize: 14,
     lineHeight: 19,
+  },
+  // Row 20 — no `textTransform` (unlike `toolStatus`/`planEntryStatus`
+  // above): the decision-state label is verbatim Title-case copy from
+  // `resolveProposedPlanDecisionStatus` ("Awaiting approval", not
+  // "Awaiting Approval"), not a raw status enum needing case-normalizing.
+  planStatusLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  planFailureMessage: {
+    color: colors.red,
+    fontSize: 12.5,
+    lineHeight: 17,
   },
   errorCard: {
     borderRadius: radius.md,
