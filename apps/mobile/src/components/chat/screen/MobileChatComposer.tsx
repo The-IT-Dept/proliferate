@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { AvailableSessionCommand } from "@anyharness/sdk";
 import type { ComposerActionMode } from "../../../lib/domain/chat/mobile-chat-composer-state";
@@ -63,14 +63,19 @@ interface MobileChatComposerProps {
  * on-screen label stay in lockstep with the actual behavior.
  *
  * Row 23 (parity map) — slash-command + @mention pickers. Caret tracking is
- * local (`selection` state via `MobileTextInput`'s `onSelectionChange`);
- * mobile's draft is a flat string (no rich draft-node model — see
+ * local (`caret` state via `MobileTextInput`'s `onSelectionChange`, updated
+ * on every native selection change including ordinary typing); mobile's
+ * draft is a flat string (no rich draft-node model — see
  * `mobile-composer-triggers.ts`'s module doc), so the trigger detector only
  * needs `draft` + the caret offset, mirroring how web's `ComposerCommandEditor`
  * reads `textareaRef.current.selectionStart`. Selecting a row calls
- * `replaceComposerTrigger` and applies both the new draft text and the new
- * caret position in the same handler (same tick, no extra effect needed —
- * React batches them before the next render).
+ * `replaceComposerTrigger` and applies the new draft text, the new caret,
+ * and a one-render `pendingSelection` to move the native cursor, all in the
+ * same handler (same tick, no extra effect needed for the state batching —
+ * React applies them together before the next render).
+ *
+ * `selection` on `MobileTextInput` is deliberately NOT fully controlled: see
+ * the `pendingSelection` state below for why (Android typing jank).
  */
 export function MobileChatComposer({
   draft,
@@ -91,13 +96,34 @@ export function MobileChatComposer({
   runtimeReady,
 }: MobileChatComposerProps) {
   const actionIcon = actionMode === "stop" ? "stop" : actionMode === "save" ? "check" : "send";
-  const [selection, setSelection] = useState({ start: draft.length, end: draft.length });
+  const [caretState, setCaretState] = useState(draft.length);
   // Clamp rather than resync via effect: an externally-driven draft change
   // (submit clearing it, the queue-edit banner swapping in different text)
-  // just needs the selection kept in-bounds for this render — see the
+  // just needs the caret kept in-bounds for this render — see the
   // component doc for why a full draft-change effect isn't needed for our
   // own programmatic insertions.
-  const caret = Math.min(selection.start, draft.length);
+  const caret = Math.min(caretState, draft.length);
+
+  // Selection is transient, not fully controlled: `pendingSelection` is only
+  // non-null for the single render right after a programmatic insert
+  // (`applyTriggerReplacement`), where we need to move the *native* cursor to
+  // `start + insertion.length`. Passing a controlled `selection` on every
+  // render fights normal typing on Android (a stale controlled value can
+  // yank the cursor back mid-keystroke / mid-IME-composition), so as soon as
+  // that one render has been applied to the native input, the effect below
+  // releases it back to `undefined` and the native input owns the caret
+  // again. Trigger detection doesn't depend on this — it reads `caret`
+  // (above), which `onSelectionChange` keeps live on every native selection
+  // change, controlled or not.
+  const [pendingSelection, setPendingSelection] = useState<{ start: number; end: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (pendingSelection === null) {
+      return;
+    }
+    setPendingSelection(null);
+  }, [pendingSelection]);
 
   const trigger = useMemo(() => detectComposerTrigger(draft, caret), [draft, caret]);
 
@@ -122,7 +148,8 @@ export function MobileChatComposer({
     }
     const result = replaceComposerTrigger(draft, trigger, replacement);
     onChangeDraft(result.text);
-    setSelection({ start: result.caret, end: result.caret });
+    setCaretState(result.caret);
+    setPendingSelection({ start: result.caret, end: result.caret });
   }
 
   function selectSlashCommand(command: MobileSlashCommandViewModel) {
@@ -172,16 +199,17 @@ export function MobileChatComposer({
           multiline
           value={draft}
           onChangeText={onChangeDraft}
-          // Controlled selection: needed so `selectSlashCommand`/
-          // `selectMentionFile` can actually move the native cursor to just
-          // after the inserted text, not only update `value`. Device note
-          // (flagged, not device-verified): fully-controlled `selection` on
-          // a multiline RN TextInput is the standard pattern for this, but
-          // has known minor jank on some Android versions while typing fast
-          // — acceptable here since we only ever *set* it away from the
-          // native echo on our own programmatic insertions.
-          selection={selection}
-          onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
+          // Transient selection, not fully controlled — see `pendingSelection`
+          // above. `undefined` hands the caret back to the native input for
+          // normal typing; it's only set to a concrete `{start, end}` for the
+          // one render right after a programmatic insert (selecting a
+          // command/file), so the native cursor lands after the inserted
+          // text. Device note (flagged, not device-verified): this is the
+          // known-safer RN pattern for Android specifically because it avoids
+          // a controlled `selection` fighting fast typing / IME composition —
+          // still needs confirming on an actual Android device.
+          selection={pendingSelection ?? undefined}
+          onSelectionChange={(event) => setCaretState(event.nativeEvent.selection.start)}
           placeholder={placeholder}
           style={styles.composerInput}
         />
