@@ -44,7 +44,11 @@ interface MobileHomeScreenProps {
 type HomeSheet = "repo" | "branch" | "config" | null;
 
 const RECENT_LIMIT = 3;
-const SCROLL_CONTENT_BOTTOM_PADDING = 140;
+// Baseline breathing room under the last row. The tab-bar footprint itself is
+// now applied natively by NativeTabs' automatic content inset (see the
+// KeyboardAwareScrollView's `contentInsetAdjustmentBehavior` below), so this is
+// no longer the ~140pt "reserve the whole floating bar" hack it used to be.
+const SCROLL_CONTENT_BOTTOM_PADDING = spacing[8];
 
 export function MobileHomeScreen({
   ownerUserId,
@@ -143,6 +147,14 @@ export function MobileHomeScreen({
           { paddingBottom: scrollContentBottomPadding },
           keyboardInset > 0 && { paddingBottom: scrollContentBottomPadding + keyboardInset },
         ]}
+        // Root-cause fix: iOS defaults `contentInsetAdjustmentBehavior` to
+        // `"never"`, so without this the eyebrow + hero + composer rendered at
+        // y=0, under the "Home" large title and the status-bar clock.
+        // `"automatic"` applies the large-title TOP inset (and lets the title
+        // collapse on scroll, since this is the screen's first/primary
+        // scrollable) plus the NativeTabs bottom tab-bar inset.
+        contentInsetAdjustmentBehavior="automatic"
+        automaticallyAdjustsScrollIndicatorInsets
         bottomOffset={16}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -274,9 +286,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: spacing[5],
-    paddingTop: spacing[8],
-    // paddingBottom is set inline (scrollContentBottomPadding) so it can
-    // reserve the floating tab bar's footprint — see that computation above.
+    // Small gap below the native large title; the header inset itself is
+    // applied by the scroll view's automatic contentInsetAdjustmentBehavior,
+    // so this is a body gap, not a header clearance hack.
+    paddingTop: spacing[3],
+    // paddingBottom is set inline (scrollContentBottomPadding).
     gap: spacing[3],
   },
   dateEyebrow: {
