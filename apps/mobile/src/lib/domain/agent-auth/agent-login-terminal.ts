@@ -23,15 +23,13 @@ export interface AgentLoginTerminalSessionState {
   message: string | null;
   errorMessage: string | null;
   isStarting: boolean;
-  focusRequestToken: number;
 }
 
 export type AgentLoginTerminalSessionAction =
   | { type: "start_requested" }
   | { type: "start_succeeded"; response: StartAgentLoginTerminalResponse }
   | { type: "start_failed"; message: string }
-  | { type: "exit"; code: number | null }
-  | { type: "focus" };
+  | { type: "exit"; code: number | null };
 
 function emptySession(kind: string): AgentLoginTerminalSessionState {
   return {
@@ -40,7 +38,6 @@ function emptySession(kind: string): AgentLoginTerminalSessionState {
     message: null,
     errorMessage: null,
     isStarting: false,
-    focusRequestToken: 0,
   };
 }
 
@@ -49,7 +46,6 @@ export function agentLoginTerminalSessionReducer(
   previous: AgentLoginTerminalSessionState | undefined,
   action: AgentLoginTerminalSessionAction,
 ): AgentLoginTerminalSessionState {
-  const focusToken = previous?.focusRequestToken ?? 0;
   switch (action.type) {
     case "start_requested":
       return {
@@ -58,7 +54,6 @@ export function agentLoginTerminalSessionReducer(
         message: null,
         errorMessage: null,
         isStarting: true,
-        focusRequestToken: focusToken + 1,
       };
     case "start_succeeded":
       return {
@@ -67,7 +62,6 @@ export function agentLoginTerminalSessionReducer(
         message: action.response.message ?? null,
         errorMessage: null,
         isStarting: false,
-        focusRequestToken: focusToken + 1,
       };
     case "start_failed":
       return {
@@ -76,7 +70,6 @@ export function agentLoginTerminalSessionReducer(
         message: null,
         errorMessage: action.message,
         isStarting: false,
-        focusRequestToken: focusToken + 1,
       };
     case "exit": {
       const current = previous ?? emptySession(kind);
@@ -87,12 +80,6 @@ export function agentLoginTerminalSessionReducer(
         ...current,
         terminal: { ...current.terminal, status: "exited", exitCode: action.code },
       };
-    }
-    case "focus": {
-      if (!previous) {
-        return emptySession(kind);
-      }
-      return { ...previous, focusRequestToken: focusToken + 1 };
     }
   }
 }

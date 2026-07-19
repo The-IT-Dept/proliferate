@@ -41,7 +41,7 @@ const START_RESPONSE: StartAgentLoginTerminalResponse = {
 };
 
 describe("agentLoginTerminalSessionReducer", () => {
-  it("start_requested marks isStarting, clears prior terminal/message/error, bumps focus", () => {
+  it("start_requested marks isStarting, clears prior terminal/message/error", () => {
     const next = agentLoginTerminalSessionReducer("claude", undefined, { type: "start_requested" });
     expect(next).toEqual({
       kind: "claude",
@@ -49,11 +49,10 @@ describe("agentLoginTerminalSessionReducer", () => {
       message: null,
       errorMessage: null,
       isStarting: true,
-      focusRequestToken: 1,
     });
   });
 
-  it("start_succeeded attaches the terminal + message, clears isStarting/error, bumps focus", () => {
+  it("start_succeeded attaches the terminal + message, clears isStarting/error", () => {
     const starting = agentLoginTerminalSessionReducer("claude", undefined, { type: "start_requested" });
     const next = agentLoginTerminalSessionReducer("claude", starting, {
       type: "start_succeeded",
@@ -65,7 +64,6 @@ describe("agentLoginTerminalSessionReducer", () => {
       message: "Follow the device code below.",
       errorMessage: null,
       isStarting: false,
-      focusRequestToken: 2,
     });
   });
 
@@ -77,7 +75,7 @@ describe("agentLoginTerminalSessionReducer", () => {
     expect(next.message).toBeNull();
   });
 
-  it("start_failed records errorMessage, clears terminal/isStarting, bumps focus", () => {
+  it("start_failed records errorMessage, clears terminal/isStarting", () => {
     const starting = agentLoginTerminalSessionReducer("claude", undefined, { type: "start_requested" });
     const next = agentLoginTerminalSessionReducer("claude", starting, {
       type: "start_failed",
@@ -89,7 +87,6 @@ describe("agentLoginTerminalSessionReducer", () => {
       message: null,
       errorMessage: "Cloud sandbox connection is not available.",
       isStarting: false,
-      focusRequestToken: 2,
     });
   });
 
@@ -100,7 +97,6 @@ describe("agentLoginTerminalSessionReducer", () => {
     });
     const next = agentLoginTerminalSessionReducer("claude", running, { type: "exit", code: 0 });
     expect(next.terminal).toEqual({ ...TERMINAL, status: "exited", exitCode: 0 });
-    expect(next.focusRequestToken).toBe(running.focusRequestToken);
   });
 
   it("exit with a null code (killed/unknown) records exitCode: null", () => {
@@ -120,15 +116,6 @@ describe("agentLoginTerminalSessionReducer", () => {
     const next = agentLoginTerminalSessionReducer("claude", errored, { type: "exit", code: 0 });
     expect(next).toEqual(errored);
   });
-
-  it("focus bumps focusRequestToken on an existing session without touching other fields", () => {
-    const running = agentLoginTerminalSessionReducer("claude", undefined, {
-      type: "start_succeeded",
-      response: START_RESPONSE,
-    });
-    const next = agentLoginTerminalSessionReducer("claude", running, { type: "focus" });
-    expect(next).toEqual({ ...running, focusRequestToken: running.focusRequestToken + 1 });
-  });
 });
 
 describe("deriveLoginTerminalStatusText", () => {
@@ -139,7 +126,6 @@ describe("deriveLoginTerminalStatusText", () => {
       message: null,
       errorMessage: null,
       isStarting: false,
-      focusRequestToken: 0,
       ...overrides,
     };
   }
@@ -200,7 +186,6 @@ describe("shouldShowLoginTerminalPanel", () => {
         message: null,
         errorMessage: null,
         isStarting: false,
-        focusRequestToken: 0,
       }),
     ).toBe(false);
   });
@@ -213,7 +198,6 @@ describe("shouldShowLoginTerminalPanel", () => {
         message: null,
         errorMessage: null,
         isStarting: true,
-        focusRequestToken: 1,
       }),
     ).toBe(true);
   });
@@ -226,7 +210,6 @@ describe("shouldShowLoginTerminalPanel", () => {
         message: null,
         errorMessage: null,
         isStarting: false,
-        focusRequestToken: 1,
       }),
     ).toBe(true);
   });
@@ -239,7 +222,6 @@ describe("shouldShowLoginTerminalPanel", () => {
         message: null,
         errorMessage: "boom",
         isStarting: false,
-        focusRequestToken: 1,
       }),
     ).toBe(true);
   });

@@ -130,11 +130,14 @@ export function useAgentLoginTerminalWorkflow() {
       }
 
       const existing = sessionsByKind[kind];
+      // Already open and no restart requested — nothing to do, the session
+      // state is already correct. Mobile's only caller
+      // (MobileAgentAuthDetailScreen's handleAuthenticate) always passes
+      // `restart: Boolean(session)`, so this branch is effectively
+      // defensive/unreachable from the UI today; kept as a safe no-op for
+      // any future caller that omits `restart`, rather than a "focus" pseudo
+      // -update tracked purely for a re-press signal nothing here consumes.
       if (existing?.terminal && !options?.restart) {
-        setSessionsByKind((current) => ({
-          ...current,
-          [kind]: agentLoginTerminalSessionReducer(kind, current[kind], { type: "focus" }),
-        }));
         return;
       }
 
