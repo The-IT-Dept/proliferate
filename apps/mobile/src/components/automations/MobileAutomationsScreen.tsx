@@ -11,13 +11,13 @@ import { MobileIcon } from "../primitives/MobileIcon";
 import { MobileListRow } from "../primitives/MobileListRow";
 import { MobileEmptyState, MobileScreen } from "../primitives/MobileLayout";
 import { MobileStatusDot } from "../primitives/MobileStatusDot";
-import { colors, layout, radius, spacing } from "../../styles/tokens";
+import { colors, radius, spacing } from "../../styles/tokens";
 
 export function MobileAutomationsScreen() {
-  // The native tab bar computes its own content insets for the first
-  // scroll view in a tab screen (app/(tabs)/_layout.tsx), so this no
-  // longer needs to reserve a floating bar's footprint by hand.
-  const scrollContentBottomPadding = layout.screenBottomPadding;
+  // MobileScreen's ScrollView now carries the native content inset
+  // (contentInsetAdjustmentBehavior="automatic"), so the tab-bar footprint is
+  // applied natively — this is just baseline breathing room under the last row.
+  const scrollContentBottomPadding = spacing[8];
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [togglingAutomationId, setTogglingAutomationId] = useState<string | null>(null);
   const automations = useAutomations({ ownerScope: "personal" });
@@ -49,6 +49,11 @@ export function MobileAutomationsScreen() {
 
   return (
     <MobileScreen contentStyle={[styles.screenContent, { paddingBottom: scrollContentBottomPadding }]}>
+      {/* Native headers have no subtitle slot, so this caption (moved out of
+          the route, where it rendered under the title) reads as body content
+          below the "Automations" large title. It's the scroll view's first
+          child, so it collapses the large title on scroll like the rest. */}
+      <Text style={styles.subtitle}>Scheduled runs</Text>
       <View style={styles.intro}>
         <Text style={styles.introText}>Cloud automations you set up on desktop or web.</Text>
       </View>
@@ -128,6 +133,13 @@ const styles = StyleSheet.create({
   screenContent: {
     paddingHorizontal: 0,
     paddingTop: 0,
+  },
+  subtitle: {
+    color: colors.faint,
+    fontSize: 12,
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[3],
+    paddingBottom: spacing[1],
   },
   intro: {
     paddingHorizontal: spacing[4],
