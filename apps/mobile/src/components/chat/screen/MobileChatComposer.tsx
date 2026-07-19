@@ -76,6 +76,13 @@ interface MobileChatComposerProps {
  *
  * `selection` on `MobileTextInput` is deliberately NOT fully controlled: see
  * the `pendingSelection` state below for why (Android typing jank).
+ *
+ * The picker tray is also gated on focus (`isFocused`, via `onFocus`/
+ * `onBlur`) so it doesn't linger after the keyboard/input loses focus while
+ * a trigger token (e.g. a stale `/rev` or `@foo`) is still under the caret.
+ * Tapping a tray row doesn't itself blur the input — `MobileComposerPickerTray`
+ * already sets `keyboardShouldPersistTaps="handled"` on its `ScrollView` —
+ * so selecting a row races nothing here.
  */
 export function MobileChatComposer({
   draft,
@@ -124,6 +131,11 @@ export function MobileChatComposer({
     }
     setPendingSelection(null);
   }, [pendingSelection]);
+
+  // Row 23 fix — the tray shouldn't linger once the input isn't focused
+  // (keyboard dismissed, app backgrounded) even if a trigger token is still
+  // sitting under the caret in the draft.
+  const [isFocused, setIsFocused] = useState(false);
 
   const trigger = useMemo(() => detectComposerTrigger(draft, caret), [draft, caret]);
 
@@ -174,7 +186,7 @@ export function MobileChatComposer({
 
   return (
     <View style={[styles.composer, keyboardInset > 0 && { marginBottom: keyboardInset }]}>
-      {pickerState ? (
+      {isFocused && pickerState ? (
         <MobileComposerPickerTray
           state={pickerState}
           onSelectCommand={selectSlashCommand}
@@ -210,6 +222,8 @@ export function MobileChatComposer({
           // still needs confirming on an actual Android device.
           selection={pendingSelection ?? undefined}
           onSelectionChange={(event) => setCaretState(event.nativeEvent.selection.start)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           placeholder={placeholder}
           style={styles.composerInput}
         />
