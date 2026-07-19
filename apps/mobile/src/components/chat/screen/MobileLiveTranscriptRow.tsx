@@ -5,6 +5,7 @@ import {
   resolveProposedPlanDecisionActions,
   resolveProposedPlanDecisionStatus,
   resolveProposedPlanFailureMessage,
+  shouldShowProposedPlanDecisionChip,
 } from "../../../lib/domain/chat/mobile-proposed-plan-decision";
 import type { MobileChatInteractionActions } from "../../../hooks/chat/workflows/use-mobile-chat-interaction-actions";
 import type { MobilePlanDecisionActions } from "../../../hooks/chat/workflows/use-mobile-plan-decision-actions";
@@ -173,12 +174,15 @@ function PlanRow({ row }: { row: Extract<TranscriptRowViewModel, { kind: "plan" 
 
 /**
  * Row 20 — mirrors web's `ProposedPlanCard.tsx`: a status chip (fixed
- * Title-case vocabulary, verbatim from `resolveProposedPlanDecisionStatus`)
- * plus, while a decision is actionable, an Approve/Reject footer (reusing
- * the shared interaction-card footer — same secondary-left/primary-right
- * layout and busy-state convention as the permission/user_input/mcp
- * elicitation cards, not a forked one-off). A native-continuation failure
- * gets its own destructive note line under the header, matching web.
+ * Title-case vocabulary, verbatim from `resolveProposedPlanDecisionStatus`,
+ * shown only once `shouldShowProposedPlanDecisionChip` is true — Fix 1,
+ * reviewer finding: no chip while the plan body is still streaming and no
+ * decision has arrived yet) plus, while a decision is actionable, an
+ * Approve/Reject footer (reusing the shared interaction-card footer — same
+ * secondary-left/primary-right layout and busy-state convention as the
+ * permission/user_input/mcp elicitation cards, not a forked one-off). A
+ * native-continuation failure gets its own destructive note line under the
+ * header, matching web.
  */
 function ProposedPlanRow({
   row,
@@ -195,12 +199,15 @@ function ProposedPlanRow({
   const actions = resolveProposedPlanDecisionActions(row);
   const failureMessage = resolveProposedPlanFailureMessage(row);
   const decisionVersion = row.decisionVersion;
+  const showStatusChip = shouldShowProposedPlanDecisionChip(decisionVersion);
 
   return (
     <View style={styles.planCard}>
       <View style={styles.toolHeaderRow}>
         <Text style={styles.toolTitle} numberOfLines={1}>{row.title}</Text>
-        <Text style={[styles.planStatusLabel, planStatusToneStyle(status.tone)]}>{status.label}</Text>
+        {showStatusChip ? (
+          <Text style={[styles.planStatusLabel, planStatusToneStyle(status.tone)]}>{status.label}</Text>
+        ) : null}
       </View>
       <MobileMarkdownText content={row.bodyMarkdown} />
       {failureMessage ? <Text style={styles.planFailureMessage}>{failureMessage}</Text> : null}

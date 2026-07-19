@@ -4,6 +4,7 @@ import {
   resolveProposedPlanDecisionActions,
   resolveProposedPlanDecisionStatus,
   resolveProposedPlanFailureMessage,
+  shouldShowProposedPlanDecisionChip,
 } from "./mobile-proposed-plan-decision";
 
 /**
@@ -49,6 +50,17 @@ describe("resolveProposedPlanDecisionStatus", () => {
         nativeResolutionState: "failed",
       }),
     ).toEqual({ label: "Failed", tone: "destructive" });
+  });
+});
+
+describe("shouldShowProposedPlanDecisionChip", () => {
+  it("hides the chip while the plan body is still streaming (no decision content part observed yet)", () => {
+    expect(shouldShowProposedPlanDecisionChip(null)).toBe(false);
+  });
+
+  it("shows the chip once a decision content part has arrived, whatever the version", () => {
+    expect(shouldShowProposedPlanDecisionChip(1)).toBe(true);
+    expect(shouldShowProposedPlanDecisionChip(0)).toBe(true);
   });
 });
 

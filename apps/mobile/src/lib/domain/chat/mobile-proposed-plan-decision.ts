@@ -23,10 +23,26 @@ export interface ProposedPlanDecisionStatus {
   tone: "warning" | "neutral" | "muted" | "destructive";
 }
 
+/** Fix 1 (reviewer finding) — mirrors web's `ProposedPlanCard.tsx` chip
+ * gate: `decisionState && decisionState !== "streaming" ? resolveDecisionStatus(...)
+ * : null`, i.e. no chip while the `ExitPlanMode` tool call's plan body is
+ * still streaming. Mobile has no distinct "streaming" `decisionState` (see
+ * this module's doc comment) — the same pre-decision window is exactly
+ * `decisionVersion === null`, so that's the gate here instead. Call this
+ * *before* `resolveProposedPlanDecisionStatus` and skip rendering the chip
+ * entirely when it returns `false`, rather than baking the check into that
+ * function — keeps `resolveProposedPlanDecisionStatus`'s signature a
+ * verbatim mirror of web's `resolveDecisionStatus`, which never sees the
+ * streaming case at all (the caller filters it out first). */
+export function shouldShowProposedPlanDecisionChip(decisionVersion: number | null): boolean {
+  return decisionVersion !== null;
+}
+
 /** Mirrors `resolveDecisionStatus` — fixed Title-case vocabulary, with a
  * native-resolution failure overriding the chip regardless of
  * `decisionState` (a failed native continuation retry still shows "Failed",
- * not "Approved"). */
+ * not "Approved"). Only meaningful once `shouldShowProposedPlanDecisionChip`
+ * is true — see that function's doc comment. */
 export function resolveProposedPlanDecisionStatus(input: {
   decisionState: ProposedPlanDecisionState;
   nativeResolutionState: ProposedPlanNativeResolutionState | null;
