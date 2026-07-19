@@ -21,6 +21,7 @@ import {
   type MobileChangedFile,
   type MobileDiffMode,
 } from "../../lib/domain/workspace/mobile-diff-changes";
+import { resolveMobileDiffBaseRef } from "../../lib/domain/workspace/mobile-diff-base-ref";
 import { gitFileStatusPresentation } from "../../lib/domain/workspace/mobile-git-file-status";
 import { prStatusKindFromSummary } from "../../lib/domain/workspace/mobile-pr-status";
 import { colors, radius, spacing } from "../../styles/tokens";
@@ -53,7 +54,16 @@ export function MobileWorkspaceDiffSegment({ topInset }: MobileWorkspaceDiffSegm
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   const statusQuery = useGitStatusQuery();
-  const baseRef = statusQuery.data?.suggestedBaseBranch ?? undefined;
+  // I2 — precedence mirrors web's `resolveGitPanelBaseRef`
+  // (repoPreferenceDefaultBranch -> repoRootDefaultBranch ->
+  // suggestedBaseBranch), but this segment only has `suggestedBaseBranch`
+  // available: mobile has no repo-preferences store and no RepoRoot query
+  // yet (see `resolveMobileDiffBaseRef`'s doc comment for the full
+  // rationale). Narrow, documented divergence — not a regression, since
+  // `suggestedBaseBranch` alone was already this surface's whole input.
+  const baseRef = resolveMobileDiffBaseRef({
+    suggestedBaseBranch: statusQuery.data?.suggestedBaseBranch,
+  }) ?? undefined;
   const branchFilesQuery = useGitBranchDiffFilesQuery({
     enabled: mode === "branch",
     baseRef,
