@@ -38,6 +38,7 @@ import {
 import {
   compareSessions,
   effectiveWorkspaceStatus,
+  resolveActiveSession,
   sessionProjectionFromChat,
 } from "../../../lib/domain/chat/mobile-chat-presentation";
 import { useSessionTranscriptStream } from "./use-session-transcript-stream";
@@ -132,17 +133,13 @@ export function useMobileChatData({
       .sort(compareSessions);
   }, [sessionsQuery.data, workspace]);
   const fallbackSession = useMemo(() => sessionProjectionFromChat(chat), [chat]);
-  const singleInferredSession = !chat.sessionId && sessions.length === 1 ? sessions[0] ?? null : null;
-  const selectedSession = selectedSessionId
-    ? sessions.find((candidate) => candidate.sessionId === selectedSessionId)
-      ?? (fallbackSession?.sessionId === selectedSessionId ? fallbackSession : null)
-    : chat.sessionId
-      ? sessions.find((candidate) => candidate.sessionId === chat.sessionId)
-        ?? fallbackSession
-        ?? null
-      : singleInferredSession;
-  const session = newSessionMode ? null : selectedSession;
-  const sessionChoiceRequired = !newSessionMode && !session && !chat.sessionId && sessions.length > 1;
+  const { session, sessionChoiceRequired } = resolveActiveSession({
+    sessions,
+    selectedSessionId,
+    chatSessionId: chat.sessionId,
+    fallbackSession,
+    newSessionMode,
+  });
   const activeSessionId = session?.sessionId ?? selectedSessionId;
   const targetId = session?.targetId ?? workspace?.targetId ?? chat.targetId;
   const workspaceStatus = workspace ? effectiveWorkspaceStatus(workspace) : chat.status;

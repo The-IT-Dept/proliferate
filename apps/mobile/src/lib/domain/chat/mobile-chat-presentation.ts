@@ -75,6 +75,72 @@ export function compareSessions(
     || (right.lastEventSeq ?? 0) - (left.lastEventSeq ?? 0);
 }
 
+export interface ResolveActiveSessionInput {
+  /** Workspace sessions, pre-sorted most-recent-first (`compareSessions`). */
+  sessions: readonly CloudSessionProjection[];
+  /** The explicitly-selected session id (a tap / action-sheet pick), or null. */
+  selectedSessionId: string | null;
+  /** The routed `sessionId` param the workspace was opened with, or null. */
+  chatSessionId: string | null;
+  /** A projection synthesized from the routed chat scaffold, used before the
+   * real sessions query has the targeted session (matches by `sessionId`). */
+  fallbackSession: CloudSessionProjection | null;
+  /** Whether the chat is composing a not-yet-created session. */
+  newSessionMode: boolean;
+}
+
+export interface ResolveActiveSessionResult {
+  /** The session the selection logic resolves to, ignoring new-session mode. */
+  selectedSession: CloudSessionProjection | null;
+  /** The active session the chat should render/stream (`null` in new-session
+   * mode, or when nothing resolves). */
+  session: CloudSessionProjection | null;
+  /** True only when there's genuinely nothing to show and the user must pick —
+   * now effectively unreachable while any session exists, since a bare open
+   * defaults to the most-recent session below. */
+  sessionChoiceRequired: boolean;
+}
+
+/**
+ * Resolve which session the chat is looking at, given the three inputs that
+ * can target one (an explicit `selectedSessionId`, the routed `chatSessionId`,
+ * or neither) plus `newSessionMode`. Pure so the "which session on open"
+ * behaviour is unit-tested rather than buried in the data hook.
+ *
+ * The load-bearing rule: when NOTHING explicit targets a session (no
+ * `selectedSessionId`, no routed `chatSessionId`) we default to the
+ * most-recent session — `sessions[0]`, since the list arrives sorted
+ * most-recent-first — instead of leaving `session` null. That's what makes a
+ * freshly-opened workspace land on the live work (streaming its transcript +
+ * history) rather than an empty "choose a session" / "new session" screen when
+ * sessions exist. Previously this only auto-selected when there was exactly one
+ * session, so any workspace with 2+ sessions opened to a dead empty state until
+ * an explicit pick — the "shows New session / no history on open" symptom.
+ */
+export function resolveActiveSession(
+  input: ResolveActiveSessionInput,
+): ResolveActiveSessionResult {
+  const { sessions, selectedSessionId, chatSessionId, fallbackSession, newSessionMode } = input;
+
+  const defaultSession =
+    !chatSessionId && sessions.length > 0 ? sessions[0] ?? null : null;
+
+  const selectedSession = selectedSessionId
+    ? sessions.find((candidate) => candidate.sessionId === selectedSessionId)
+        ?? (fallbackSession?.sessionId === selectedSessionId ? fallbackSession : null)
+    : chatSessionId
+      ? sessions.find((candidate) => candidate.sessionId === chatSessionId)
+          ?? fallbackSession
+          ?? null
+      : defaultSession;
+
+  const session = newSessionMode ? null : selectedSession;
+  const sessionChoiceRequired =
+    !newSessionMode && !session && !chatSessionId && sessions.length > 1;
+
+  return { selectedSession, session, sessionChoiceRequired };
+}
+
 export function sessionDisplayTitle(session: CloudSessionProjection, index: number): string {
   const title = session.title?.trim();
   if (title) {
