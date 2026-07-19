@@ -128,8 +128,6 @@ export function useMobileChatActions({
     submitPrompt,
   } = useMobileChatPromptActions({
     ownerUserId,
-    client,
-    productToken,
     workspace,
     session,
     draft,

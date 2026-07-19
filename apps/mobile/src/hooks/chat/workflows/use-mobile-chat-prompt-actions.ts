@@ -1,9 +1,9 @@
 import { useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { usePromptSessionTextMutation } from "@anyharness/sdk-react";
 import type {
   CloudSessionProjection,
   CloudTranscriptItem,
   CloudWorkspaceDetail,
-  ProliferateCloudClient,
 } from "@proliferate/cloud-sdk";
 import {
   buildLaunchSessionConfigUpdates,
@@ -16,19 +16,15 @@ import { cloudCommandReadiness } from "@proliferate/product-domain/workspaces/cl
 
 import type { MobilePendingPrompt } from "../../../lib/domain/workspace/mobile-workspace-chat";
 import { savePendingMobilePrompt } from "../../../lib/access/cloud/pending-mobile-prompt-store";
-import {
-  getMobileCloudSandboxAnyHarnessClient,
-  isMobileCloudSandboxWorkspace,
-} from "../../../lib/access/anyharness/cloud-sandbox-runtime";
+import { isMobileCloudSandboxWorkspace } from "../../../lib/access/anyharness/cloud-sandbox-runtime";
 import type { OptimisticPrompt } from "../../../lib/domain/chat/mobile-chat-transcript";
+import { useMobileToast } from "../../../providers/MobileToastProvider";
 
 type CloudLaunchCatalog = Parameters<typeof resolveCloudLaunchSelection>[0]["catalog"];
 type CloudLaunchableAgentKinds = Parameters<typeof resolveCloudLaunchSelection>[0]["launchableAgentKinds"];
 
 export function useMobileChatPromptActions({
   ownerUserId,
-  client,
-  productToken,
   workspace,
   session,
   draft,
@@ -52,8 +48,6 @@ export function useMobileChatPromptActions({
   sessionEventsRefetch,
 }: {
   ownerUserId: string | null;
-  client: ProliferateCloudClient;
-  productToken: string | null;
   workspace: CloudWorkspaceDetail | null;
   session: CloudSessionProjection | null;
   draft: string;
@@ -79,6 +73,8 @@ export function useMobileChatPromptActions({
   const [directPromptDispatching, setDirectPromptDispatching] = useState(false);
   const directPromptDispatchingRef = useRef(false);
   const sessionPromptDispatchingRef = useRef(false);
+  const promptSessionTextMutation = usePromptSessionTextMutation();
+  const toast = useMobileToast();
 
   async function submitPrompt() {
     const text = draft.trim();
@@ -182,14 +178,13 @@ export function useMobileChatPromptActions({
     setDraft("");
     setPendingPromptStatus(null);
     try {
-      const { anyharness } = await getMobileCloudSandboxAnyHarnessClient({
-        workspace,
-        productToken,
-        client,
-      });
-      await anyharness.sessions.prompt(activeSession.sessionId, {
-        blocks: [{ type: "text", text }],
-        promptId: optimisticPrompt.id,
+      // Reuse the shared SDK hook (never hand-roll the API call): the
+      // runtime queues this automatically when the agent is busy, so the
+      // same call path covers both "send" and "queue" from the composer's
+      // point of view.
+      await promptSessionTextMutation.mutateAsync({
+        sessionId: activeSession.sessionId,
+        text,
       });
       setOptimisticPrompts((current) =>
         current.map((prompt) =>
@@ -201,12 +196,17 @@ export function useMobileChatPromptActions({
       void transcriptRefetch();
       void sessionEventsRefetch();
     } catch (error) {
+      // Mark the optimistic row failed (not silently dropped) and surface a
+      // toast — no desync between what the composer implies happened and
+      // what actually reached the runtime.
       setOptimisticPrompts((current) =>
         current.map((prompt) =>
           prompt.id === optimisticPrompt.id ? { ...prompt, status: "failed" } : prompt
         )
       );
-      setPendingPromptStatus(error instanceof Error ? error.message : "Prompt could not be sent.");
+      const message = error instanceof Error ? error.message : "Prompt could not be sent.";
+      setPendingPromptStatus(message);
+      toast.show({ tone: "error", message });
     } finally {
       sessionPromptDispatchingRef.current = false;
     }
