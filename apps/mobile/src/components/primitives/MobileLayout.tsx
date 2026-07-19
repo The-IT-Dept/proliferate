@@ -44,9 +44,24 @@ export function MobileScreen({
     return <View style={[styles.screen, contentStyle]}>{children}</View>;
   }
   return (
+    // `contentInsetAdjustmentBehavior="automatic"` is the shared root-cause fix
+    // for the native-header content-inset bug: RN's iOS default is `"never"`,
+    // so with no prop the scroll view applied NO automatic insets and its
+    // content rendered at y=0 under the large-title header (and needed a manual
+    // paddingBottom to clear the tab bar). `"automatic"` makes iOS apply the
+    // nav-bar/large-title TOP inset (React Navigation native-stack requires it
+    // for large titles to collapse on scroll) AND the NativeTabs bottom
+    // tab-bar inset (Expo Router "Native tabs → Safe area handling": the first
+    // ScrollView nested in a tab screen gets automatic content-inset
+    // adjustment so content scrolls correctly behind the tab bar). This
+    // ScrollView must stay the screen's first/primary scrollable for both to
+    // apply, which is why the per-tab route subtitle captions moved into the
+    // screen body below.
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.screen, contentStyle]}
+      contentInsetAdjustmentBehavior="automatic"
+      automaticallyAdjustsScrollIndicatorInsets
       keyboardShouldPersistTaps="handled"
       refreshControl={refreshControl}
     >
