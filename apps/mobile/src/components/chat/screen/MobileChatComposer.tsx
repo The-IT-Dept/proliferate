@@ -6,16 +6,11 @@ import {
   detectComposerTrigger,
   replaceComposerTrigger,
 } from "../../../lib/domain/chat/composer/mobile-composer-triggers";
-import { formatMarkdownFileLink } from "../../../lib/domain/chat/composer/mobile-composer-mention-format";
 import {
   filterMobileRunnableSessionSlashCommands,
   matchMobileSlashCommandQuery,
   type MobileSlashCommandViewModel,
 } from "../../../lib/domain/chat/composer/mobile-composer-slash-commands";
-import {
-  useMobileFileMentionSearch,
-  type MobileFileMentionSearchResult,
-} from "../../../hooks/chat/ui/use-mobile-file-mention-search";
 import { MobileComposerPickerTray } from "./MobileComposerPickerTray";
 import { MobileIcon } from "../../primitives/MobileIcon";
 import { MobileTextInput } from "../../primitives/MobileTextInput";
@@ -40,16 +35,6 @@ interface MobileChatComposerProps {
    * this is whatever the connected agent (Claude Code / Codex / ...)
    * reports it knows about right now. */
   availableCommands: readonly AvailableSessionCommand[];
-  /** Row 23 — scopes the @mention file search
-   * (`useSearchWorkspaceFilesQuery`) to this workspace. `null` while the
-   * workspace hasn't resolved yet, matching the same optionality every other
-   * `sdk-react` query in this screen already threads through. */
-  workspaceId: string | null;
-  /** The same "is the AnyHarness runtime actually up" gate
-   * `MobileChatScreen` already computes for the composer itself
-   * (`workspaceCommandReady`) — file search can't resolve anything before
-   * the workspace runtime is ready either. */
-  runtimeReady: boolean;
 }
 
 /**
@@ -62,10 +47,10 @@ interface MobileChatComposerProps {
  * state. `actionLabel` carries the verbatim copy so accessibility and any
  * on-screen label stay in lockstep with the actual behavior.
  *
- * Row 23 (parity map) — slash-command + @mention pickers. Caret tracking is
- * local (`caret` state via `MobileTextInput`'s `onSelectionChange`, updated
- * on every native selection change including ordinary typing); mobile's
- * draft is a flat string (no rich draft-node model — see
+ * Row 23 (parity map) — the slash-command picker. Caret tracking is local
+ * (`caret` state via `MobileTextInput`'s `onSelectionChange`, updated on
+ * every native selection change including ordinary typing); mobile's draft
+ * is a flat string (no rich draft-node model — see
  * `mobile-composer-triggers.ts`'s module doc), so the trigger detector only
  * needs `draft` + the caret offset, mirroring how web's `ComposerCommandEditor`
  * reads `textareaRef.current.selectionStart`. Selecting a row calls
@@ -79,10 +64,17 @@ interface MobileChatComposerProps {
  *
  * The picker tray is also gated on focus (`isFocused`, via `onFocus`/
  * `onBlur`) so it doesn't linger after the keyboard/input loses focus while
- * a trigger token (e.g. a stale `/rev` or `@foo`) is still under the caret.
- * Tapping a tray row doesn't itself blur the input — `MobileComposerPickerTray`
+ * a trigger token (e.g. a stale `/rev`) is still under the caret. Tapping a
+ * tray row doesn't itself blur the input — `MobileComposerPickerTray`
  * already sets `keyboardShouldPersistTaps="handled"` on its `ScrollView` —
  * so selecting a row races nothing here.
+ *
+ * This composer originally also drove a @mention file-search picker
+ * alongside the slash one (same trigger/tray machinery, a second data
+ * source via a now-deleted `useMobileFileMentionSearch` hook). That half was
+ * removed to match web's current slash-only composer — see
+ * `mobile-composer-triggers.ts`'s module doc for the provenance note
+ * (`product-client` commit 2e0dcf52c).
  */
 export function MobileChatComposer({
   draft,
@@ -99,8 +91,6 @@ export function MobileChatComposer({
   onSubmit,
   onCancelEdit,
   availableCommands,
-  workspaceId,
-  runtimeReady,
 }: MobileChatComposerProps) {
   const actionIcon = actionMode === "stop" ? "stop" : actionMode === "save" ? "check" : "send";
   const [caretState, setCaretState] = useState(draft.length);
@@ -140,19 +130,12 @@ export function MobileChatComposer({
   const trigger = useMemo(() => detectComposerTrigger(draft, caret), [draft, caret]);
 
   const slashCommands = useMemo(() => {
-    if (trigger?.kind !== "slash") {
+    if (!trigger) {
       return [];
     }
     return filterMobileRunnableSessionSlashCommands(availableCommands)
       .filter((command) => matchMobileSlashCommandQuery(command, trigger.query));
   }, [availableCommands, trigger]);
-
-  const mentionSearch = useMobileFileMentionSearch({
-    open: trigger?.kind === "mention",
-    workspaceId,
-    runtimeReady,
-    query: trigger?.kind === "mention" ? trigger.query : "",
-  });
 
   function applyTriggerReplacement(replacement: string) {
     if (!trigger) {
@@ -168,21 +151,7 @@ export function MobileChatComposer({
     applyTriggerReplacement(command.displayName);
   }
 
-  function selectMentionFile(file: MobileFileMentionSearchResult) {
-    applyTriggerReplacement(formatMarkdownFileLink(file.name, file.path));
-  }
-
-  const pickerState = trigger?.kind === "slash"
-    ? { kind: "slash" as const, commands: slashCommands }
-    : trigger?.kind === "mention"
-      ? {
-        kind: "mention" as const,
-        query: trigger.query,
-        results: mentionSearch.results,
-        isLoading: mentionSearch.isLoading,
-        isError: mentionSearch.isError,
-      }
-      : null;
+  const pickerState = trigger ? { kind: "slash" as const, commands: slashCommands } : null;
 
   return (
     <View style={[styles.composer, keyboardInset > 0 && { marginBottom: keyboardInset }]}>
@@ -190,7 +159,6 @@ export function MobileChatComposer({
         <MobileComposerPickerTray
           state={pickerState}
           onSelectCommand={selectSlashCommand}
-          onSelectFile={selectMentionFile}
         />
       ) : null}
       <View style={styles.composerCard}>

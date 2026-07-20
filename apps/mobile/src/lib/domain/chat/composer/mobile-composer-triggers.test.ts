@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   detectComposerTrigger,
-  findAtMentionTrigger,
   findSlashCommandTrigger,
   replaceComposerTrigger,
 } from "./mobile-composer-triggers";
@@ -52,74 +51,8 @@ describe("findSlashCommandTrigger", () => {
   });
 });
 
-describe("findAtMentionTrigger", () => {
-  // Ported from web's deleted `findMentionTrigger`
-  // (`file-mention-draft-edits.ts` at commit 2e0dcf52c~1, before
-  // "feat(desktop): replace composer mentions with slash commands" deleted
-  // the live @mention composer feature) — same boundary-scanning algorithm,
-  // adapted from draft-node positions to flat string offsets. Test cases
-  // mirror that deleted `file-mention-draft.test.ts` suite's assertions.
-  it("detects @ triggers at allowed boundaries", () => {
-    expect(findAtMentionTrigger("see @Cha", 8)).toEqual({
-      kind: "mention",
-      start: 4,
-      end: 8,
-      query: "Cha",
-    });
-  });
-
-  it("triggers right after a newline", () => {
-    const text = "one\n@two";
-    expect(findAtMentionTrigger(text, text.length)?.query).toBe("two");
-  });
-
-  it("triggers right after opening punctuation", () => {
-    const text = "(@file";
-    expect(findAtMentionTrigger(text, text.length)?.query).toBe("file");
-  });
-
-  it("triggers at the very start of the draft", () => {
-    expect(findAtMentionTrigger("@App", 4)).toEqual({
-      kind: "mention",
-      start: 0,
-      end: 4,
-      query: "App",
-    });
-  });
-
-  it("does not trigger inside a word (email-like text)", () => {
-    expect(findAtMentionTrigger("foo@bar", 7)).toBeNull();
-  });
-
-  it("treats @fo@bar as one query — skips a non-boundary @ and keeps scanning", () => {
-    expect(findAtMentionTrigger("@fo@bar", 7)?.query).toBe("fo@bar");
-  });
-
-  it("stops at whitespace between the caret and any @", () => {
-    expect(findAtMentionTrigger("@foo bar", 8)).toBeNull();
-  });
-
-  it("query is empty right after typing the trigger character", () => {
-    expect(findAtMentionTrigger("hi @", 4)).toEqual({
-      kind: "mention",
-      start: 3,
-      end: 4,
-      query: "",
-    });
-  });
-
-  it("rejects an out-of-range or zero caret", () => {
-    expect(findAtMentionTrigger("@foo", 0)).toBeNull();
-    expect(findAtMentionTrigger("@foo", -1)).toBeNull();
-    expect(findAtMentionTrigger("@foo", 10)).toBeNull();
-  });
-});
-
 describe("detectComposerTrigger", () => {
-  it("prefers a slash trigger over a mention trigger when both could apply", () => {
-    // Not actually reachable in practice (a leading "/" is never a valid
-    // mention boundary character), but the precedence is documented and
-    // tested directly against the resolver rather than left implicit.
+  it("detects a slash trigger", () => {
     expect(detectComposerTrigger("/rev", 4)).toEqual({
       kind: "slash",
       start: 0,
@@ -128,16 +61,7 @@ describe("detectComposerTrigger", () => {
     });
   });
 
-  it("falls through to a mention trigger when there is no slash trigger", () => {
-    expect(detectComposerTrigger("see @App", 8)).toEqual({
-      kind: "mention",
-      start: 4,
-      end: 8,
-      query: "App",
-    });
-  });
-
-  it("returns null when neither trigger matches", () => {
+  it("returns null when there is no slash trigger", () => {
     expect(detectComposerTrigger("just a plain message", 21)).toBeNull();
   });
 });
@@ -150,28 +74,24 @@ describe("replaceComposerTrigger", () => {
   });
 
   it("swallows one existing trailing space instead of doubling it up", () => {
-    const text = "open @App today";
-    const trigger = findAtMentionTrigger(text, 9)!; // caret right after "@App"
-    const result = replaceComposerTrigger(text, trigger, "[App.tsx](desktop/src/App.tsx)");
+    const text = "/rev today";
+    const trigger = findSlashCommandTrigger(text, 4)!; // caret right after "/rev"
+    const result = replaceComposerTrigger(text, trigger, "/review");
     expect(result).toEqual({
-      text: "open [App.tsx](desktop/src/App.tsx) today",
-      caret: 36,
+      text: "/review today",
+      caret: 8,
     });
   });
 
-  it("does not swallow a non-whitespace character right after the caret (mention edited mid-token)", () => {
-    // Mention triggers end exactly at the caret (never extended forward like
-    // a slash token's contiguous non-whitespace run), so a caret sitting
-    // mid-word leaves the untyped remainder of that word untouched.
-    const text = "@ab cd";
-    const trigger = findAtMentionTrigger(text, 2)!; // caret between "@a" and "b"
-    const result = replaceComposerTrigger(text, trigger, "[a.ts](src/a.ts)");
-    expect(result).toEqual({ text: "[a.ts](src/a.ts) b cd", caret: 17 });
-  });
-
-  it("inserts a trailing space at end of text when there is nothing after the token", () => {
-    const trigger = findAtMentionTrigger("hi @fi", 6)!;
-    const result = replaceComposerTrigger("hi @fi", trigger, "[file.ts](src/file.ts)");
-    expect(result).toEqual({ text: "hi [file.ts](src/file.ts) ", caret: 26 });
+  it("does not swallow a non-whitespace character right after the token end", () => {
+    // `findSlashCommandTrigger` always extends its `end` to a whitespace
+    // boundary or end-of-text (`findTokenEnd`), so this branch isn't
+    // reachable through it in practice — hand-construct a trigger to keep
+    // `replaceComposerTrigger`'s own contract covered directly: it only ever
+    // consumes one *existing* whitespace char, never non-whitespace content.
+    const text = "/ab cd";
+    const trigger = { kind: "slash" as const, start: 0, end: 2, query: "a" };
+    const result = replaceComposerTrigger(text, trigger, "/review");
+    expect(result).toEqual({ text: "/review b cd", caret: 8 });
   });
 });

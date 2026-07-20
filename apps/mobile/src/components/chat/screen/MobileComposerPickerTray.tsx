@@ -1,6 +1,4 @@
 import {
-  ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,40 +8,31 @@ import {
 import { GlassSurface } from "@proliferate/design/glass";
 
 import { MobileIcon } from "../../primitives/MobileIcon";
-import { colors, radius, spacing } from "../../../styles/tokens";
+import { colors, spacing } from "../../../styles/tokens";
 import type {
   MobileSlashCommandGroup,
   MobileSlashCommandViewModel,
 } from "../../../lib/domain/chat/composer/mobile-composer-slash-commands";
-import type { MobileFileMentionSearchResult } from "../../../hooks/chat/ui/use-mobile-file-mention-search";
 
-export type MobileComposerPickerState =
-  | { kind: "slash"; commands: readonly MobileSlashCommandViewModel[] }
-  | {
-      kind: "mention";
-      query: string;
-      results: readonly MobileFileMentionSearchResult[];
-      isLoading: boolean;
-      isError: boolean;
-    };
+export type MobileComposerPickerState = {
+  kind: "slash";
+  commands: readonly MobileSlashCommandViewModel[];
+};
 
 interface MobileComposerPickerTrayProps {
   state: MobileComposerPickerState;
   onSelectCommand: (command: MobileSlashCommandViewModel) => void;
-  onSelectFile: (result: MobileFileMentionSearchResult) => void;
 }
 
-const MONO_FONT = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
-
 /**
- * Row 23 — the composer's slash-command / @mention picker tray. Renders
- * inline, as a sibling directly above `MobileChatComposer` inside the same
+ * Row 23 — the composer's slash-command picker tray. Renders inline, as a
+ * sibling directly above `MobileChatComposer` inside the same
  * `KeyboardStickyView` (`MobileChatScreen.tsx`) — so it rides the keyboard
  * for free rather than needing its own keyboard-controller wiring, mirroring
- * web's `ComposerCommandEditor`/deleted `ComposerMentionEditor`, which both
- * render their search tray "in a small host directly above
- * ChatComposerSurface" (`specs/codebase/systems/product/chat/composer.md`
- * §1: "transient editor UI", not a dock-region inhabitant).
+ * web's `ComposerCommandEditor`, which renders its search tray "in a small
+ * host directly above ChatComposerSurface"
+ * (`specs/codebase/systems/product/chat/composer.md` §1: "transient editor
+ * UI", not a dock-region inhabitant).
  *
  * Glass chrome scope: `design-system.md` §3.2's `GlassSurfaceVariant`
  * allowlist (`nav | tab | toolbar | sheet | fab | dock | segmented`) has no
@@ -54,29 +43,25 @@ const MONO_FONT = Platform.select({ ios: "Menlo", android: "monospace", default:
  * here for just the thin header strip; the scrollable result list underneath
  * stays on the plain opaque `popover` surface, same "glass on chrome only,
  * list body stays opaque" split as every other sheet in this app.
+ *
+ * Originally also rendered a @mention file-search result list alongside the
+ * slash list (`state.kind === "mention"`); that half was removed to match
+ * web's current slash-only composer (`product-client` commit 2e0dcf52c,
+ * "feat(desktop): replace composer mentions with slash commands") — see
+ * `mobile-composer-triggers.ts`'s module doc.
  */
 export function MobileComposerPickerTray({
   state,
   onSelectCommand,
-  onSelectFile,
 }: MobileComposerPickerTrayProps) {
-  const headerIcon = state.kind === "slash" ? "terminal" : "search";
-  const headerLabel = state.kind === "slash"
-    ? "Commands"
-    : state.query
-      ? `Search files: ${state.query}`
-      : "Type to search workspace files.";
-  const showSpinner = state.kind === "mention" && state.isLoading;
-
   return (
     <View style={styles.card} testID="composer-picker-tray">
       <GlassSurface variant="sheet" style={styles.chrome}>
         <View style={styles.header}>
-          <MobileIcon name={headerIcon} size={13} color={colors.faint} />
+          <MobileIcon name="terminal" size={13} color={colors.faint} />
           <Text style={styles.headerText} numberOfLines={1}>
-            {headerLabel}
+            Commands
           </Text>
-          {showSpinner ? <ActivityIndicator size="small" color={colors.faint} /> : null}
         </View>
       </GlassSurface>
       <ScrollView
@@ -85,16 +70,7 @@ export function MobileComposerPickerTray({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {state.kind === "slash" ? (
-          <SlashCommandRows commands={state.commands} onSelect={onSelectCommand} />
-        ) : (
-          <MentionResultRows
-            query={state.query}
-            results={state.results}
-            isError={state.isError}
-            onSelect={onSelectFile}
-          />
-        )}
+        <SlashCommandRows commands={state.commands} onSelect={onSelectCommand} />
       </ScrollView>
     </View>
   );
@@ -149,53 +125,6 @@ function SlashCommandRows({
           </View>
         );
       })}
-    </>
-  );
-}
-
-function MentionResultRows({
-  query,
-  results,
-  isError,
-  onSelect,
-}: {
-  query: string;
-  results: readonly MobileFileMentionSearchResult[];
-  isError: boolean;
-  onSelect: (result: MobileFileMentionSearchResult) => void;
-}) {
-  if (isError) {
-    return <TrayMessage text="Couldn't search workspace files." tone="error" />;
-  }
-  if (results.length === 0) {
-    return (
-      <TrayMessage
-        text={query ? `No files match "${query}".` : "Type to search workspace files."}
-      />
-    );
-  }
-
-  return (
-    <>
-      {results.map((result) => (
-        <Pressable
-          key={result.path}
-          accessibilityRole="button"
-          accessibilityLabel={`Attach ${result.name}`}
-          onPress={() => onSelect(result)}
-          style={({ pressed }) => [styles.row, styles.mentionRow, pressed && styles.rowPressed]}
-        >
-          <MobileIcon name="folder" size={14} color={colors.faint} />
-          <View style={styles.mentionRowText}>
-            <Text style={styles.rowTitle} numberOfLines={1}>
-              {result.name}
-            </Text>
-            <Text style={styles.mentionPath} numberOfLines={1} ellipsizeMode="head">
-              {result.path}
-            </Text>
-          </View>
-        </Pressable>
-      ))}
     </>
   );
 }
@@ -263,15 +192,6 @@ const styles = StyleSheet.create({
   rowPressed: {
     backgroundColor: colors.accent,
   },
-  mentionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing[2],
-  },
-  mentionRowText: {
-    flex: 1,
-    minWidth: 0,
-  },
   rowTitle: {
     color: colors.fg,
     fontSize: 14,
@@ -288,12 +208,6 @@ const styles = StyleSheet.create({
   rowHint: {
     color: colors.faint,
     fontSize: 11,
-    marginTop: 1,
-  },
-  mentionPath: {
-    color: colors.faint,
-    fontSize: 11.5,
-    fontFamily: MONO_FONT,
     marginTop: 1,
   },
   message: {

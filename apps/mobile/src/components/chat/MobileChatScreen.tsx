@@ -489,8 +489,6 @@ export function MobileChatScreen({
             onSubmit={handleComposerPrimaryAction}
             onCancelEdit={pendingPromptQueue.cancelEdit}
             availableCommands={transcript.availableCommands}
-            workspaceId={chat.workspaceId}
-            runtimeReady={workspaceCommandReady}
           />
         </View>
       </KeyboardStickyView>
