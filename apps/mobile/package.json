@@ -38,6 +38,7 @@
     "expo-glass-effect": "~56.0.4",
     "expo-linking": "~56.0.15",
     "expo-localization": "~56.0.6",
+    "expo-network": "~56.0.5",
     "expo-notifications": "~56.0.21",
     "expo-router": "~56.2.15",
     "expo-secure-store": "~56.0.4",

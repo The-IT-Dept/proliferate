@@ -29,6 +29,8 @@ import { useMobileChatInteractionActions } from "../../hooks/chat/workflows/use-
 import { useMobilePlanDecisionActions } from "../../hooks/chat/workflows/use-mobile-plan-decision-actions";
 import { useMobileChatInterrupt } from "../../hooks/chat/workflows/use-mobile-chat-interrupt";
 import { useMobilePendingPromptQueue } from "../../hooks/chat/workflows/use-mobile-pending-prompt-queue";
+import { useMobileOfflinePromptGate } from "../../hooks/chat/workflows/use-mobile-offline-prompt-gate";
+import { useMobileConnectivity } from "../../providers/MobileConnectivityProvider";
 import { MobileWorkspaceActionSheet } from "./MobileWorkspaceActionSheet";
 import type {
   MobileCloudChat,
@@ -319,6 +321,25 @@ export function MobileChatScreen({
     sessionId: session?.sessionId ?? null,
     entries: transcript.pendingPrompts,
   });
+  // Row 40 (parity map) — offline connectivity handling. `isOnline` drives
+  // both the app-root banner (`MobileOfflineBanner`, mounted in
+  // app/_layout.tsx) and this screen's send gate: reuses E2's
+  // `submitPrompt` unchanged (`guardedSubmitPrompt` below just decides
+  // whether to call it now or park it), so sending while offline surfaces
+  // "queued, will send when online" (`queuedOfflineMessage`) instead of
+  // letting the send hit the network and fail. Rendered in the same footer
+  // slot as `footerCommandMessage` below but kept out of that variable's own
+  // `commandMessage` chain deliberately: `isPromptProgressStatus` (used to
+  // derive `footerCommandMessage`) suppresses any message starting with
+  // "queued" on the assumption it's already shown as a transcript loading
+  // row — true for runtime prompt-progress statuses, not true here (nothing
+  // has reached the runtime yet), so folding it in would silently swallow
+  // the message the moment it started with that word.
+  const { isOnline } = useMobileConnectivity();
+  const { queuedOfflineMessage, guardedSubmitPrompt } = useMobileOfflinePromptGate({
+    isOnline,
+    submitPrompt,
+  });
   const isSessionRunning = isMobileSessionRunning({
     status: (session?.status as SessionStatus | null | undefined) ?? null,
     executionSummary: session?.executionSummary as SessionExecutionSummary | null | undefined,
@@ -374,7 +395,7 @@ export function MobileChatScreen({
       void pendingPromptQueue.commitEdit();
       return;
     }
-    void submitPrompt();
+    void guardedSubmitPrompt();
   }
   const title = newSessionMode
     ? "New session"
@@ -501,9 +522,13 @@ export function MobileChatScreen({
       */}
       <KeyboardStickyView offset={{ closed: insets.bottom, opened: 0 }}>
         <View onLayout={(event) => setComposerDockHeight(event.nativeEvent.layout.height)}>
-          {footerCommandMessage ? (
+          {/* Row 40 — offline-queued send takes priority over the ordinary
+              command/status footer note (same slot, see the `isOnline` doc
+              comment above for why it's kept out of `footerCommandMessage`
+              itself). */}
+          {queuedOfflineMessage ?? footerCommandMessage ? (
             <View style={styles.footerNote}>
-              <Text style={styles.footerNoteText}>{footerCommandMessage}</Text>
+              <Text style={styles.footerNoteText}>{queuedOfflineMessage ?? footerCommandMessage}</Text>
             </View>
           ) : null}
 

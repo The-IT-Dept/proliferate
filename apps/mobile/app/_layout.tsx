@@ -14,10 +14,12 @@ import { useMobileOnboardingStatus } from "../src/hooks/shell/lifecycle/use-mobi
 import { useMobileScreenTelemetry } from "../src/hooks/telemetry/lifecycle/use-mobile-screen-telemetry";
 import { MobileAuthProvider, useMobileAuth } from "../src/providers/MobileAuthProvider";
 import { MobileCloudProvider } from "../src/providers/MobileCloudProvider";
+import { MobileConnectivityProvider } from "../src/providers/MobileConnectivityProvider";
 import { MobilePushProvider } from "../src/providers/MobilePushProvider";
 import { MobileTelemetryProvider } from "../src/providers/MobileTelemetryProvider";
 import { MobileToastProvider } from "../src/providers/MobileToastProvider";
 import { MobileWorkspaceRuntimeProvider } from "../src/providers/MobileWorkspaceRuntimeProvider";
+import { MobileOfflineBanner } from "../src/components/app/MobileOfflineBanner";
 import { colors, mobileNavigationTheme, spacing } from "../src/styles/tokens";
 
 // Same telemetry bootstrap `index.ts` used to run before `registerRootComponent`
@@ -38,27 +40,46 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.fill}>
       <SafeAreaProvider>
         <KeyboardProvider>
-          {/* Mounted once, above the auth/nav gate, so useMobileToast() is
-              available app-wide (Group C's Workspaces list today; later
-              groups reuse it the same way) regardless of auth stage. */}
-          <MobileToastProvider>
-            <MobileAuthProvider>
-              <MobileTelemetryProvider>
-                <MobileCloudProvider>
-                  {/* Needs a live Expo Router instance (`useRouter`,
-                      `useMobilePushDeepLinkHandler`), which is available
-                      here the same way `RootNavigationGate` below already
-                      relies on router hooks (`useGlobalSearchParams`,
-                      `usePathname`) at this level - the whole `_layout.tsx`
-                      tree renders inside Expo Router's own context, not
-                      just the `<Stack>` further down. */}
-                  <MobilePushProvider>
-                    <RootNavigationGate />
-                  </MobilePushProvider>
-                </MobileCloudProvider>
-              </MobileTelemetryProvider>
-            </MobileAuthProvider>
-          </MobileToastProvider>
+          {/* Row 40 (parity map) — mounted above everything else (no auth/
+              router dependency, unlike MobilePushProvider below), so
+              useMobileConnectivity() and the offline banner are available
+              app-wide, matching MobileToastProvider's "regardless of auth
+              stage" placement immediately below. */}
+          <MobileConnectivityProvider>
+            {/* Mounted once, above the auth/nav gate, so useMobileToast() is
+                available app-wide (Group C's Workspaces list today; later
+                groups reuse it the same way) regardless of auth stage. */}
+            <MobileToastProvider>
+              <MobileAuthProvider>
+                <MobileTelemetryProvider>
+                  <MobileCloudProvider>
+                    {/* Needs a live Expo Router instance (`useRouter`,
+                        `useMobilePushDeepLinkHandler`), which is available
+                        here the same way `RootNavigationGate` below already
+                        relies on router hooks (`useGlobalSearchParams`,
+                        `usePathname`) at this level - the whole `_layout.tsx`
+                        tree renders inside Expo Router's own context, not
+                        just the `<Stack>` further down. */}
+                    <MobilePushProvider>
+                      <View style={styles.fill}>
+                        {/* Persistent, non-overlay banner (Row 40) — sits
+                            above the routed Stack so it pushes the header/
+                            content down by its own height instead of
+                            covering the native header or any screen's
+                            controls, the same "always visible, never
+                            covering" intent as web's OfflineIndicator
+                            ("Placed at the top of the workspace shell"). */}
+                        <MobileOfflineBanner />
+                        <View style={styles.fill}>
+                          <RootNavigationGate />
+                        </View>
+                      </View>
+                    </MobilePushProvider>
+                  </MobileCloudProvider>
+                </MobileTelemetryProvider>
+              </MobileAuthProvider>
+            </MobileToastProvider>
+          </MobileConnectivityProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
