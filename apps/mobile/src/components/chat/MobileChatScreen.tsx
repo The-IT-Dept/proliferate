@@ -21,6 +21,7 @@ import {
 } from "@proliferate/product-domain/workspaces/cloud-work-inventory";
 
 import { useVisualViewportKeyboardInset } from "../../hooks/ui/keyboard/use-visual-viewport-keyboard-inset";
+import { useMobileToast } from "../../providers/MobileToastProvider";
 import { useMobileChatData } from "../../hooks/chat/derived/use-mobile-chat-data";
 import { useMobileChatLifecycle } from "../../hooks/chat/lifecycle/use-mobile-chat-lifecycle";
 import { useMobileChatActions } from "../../hooks/chat/workflows/use-mobile-chat-actions";
@@ -38,6 +39,9 @@ import {
   summarizeRuntimeContext,
 } from "../../lib/domain/chat/mobile-chat-presentation";
 import {
+  buildMobileCloudWorkspaceStatusView,
+} from "../../lib/domain/workspace/mobile-cloud-workspace-status";
+import {
   isAssistantLoadingRow,
   isPromptProgressStatus,
   loadingStatusText,
@@ -49,6 +53,7 @@ import {
 } from "../../lib/domain/chat/mobile-chat-composer-state";
 import { colors, radius, spacing } from "../../styles/tokens";
 import { MobileChatClaimBanner } from "./screen/MobileChatClaimBanner";
+import { MobileCloudWorkspaceStatusBanner } from "./screen/MobileCloudWorkspaceStatusBanner";
 import { MobileChatComposer } from "./screen/MobileChatComposer";
 import { MobileChatHeaderActions } from "./screen/MobileChatHeaderActions";
 import { MobileChatPendingPromptQueue } from "./screen/MobileChatPendingPromptQueue";
@@ -122,6 +127,8 @@ export function MobileChatScreen({
   >({});
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [actionSheetInitialExpandedId, setActionSheetInitialExpandedId] = useState<string | null>(null);
+  const [workspaceStatusRetryPending, setWorkspaceStatusRetryPending] = useState(false);
+  const toast = useMobileToast();
   // Seed the dock height so the first frame reserves sensible transcript
   // bottom padding; the real height is measured via `onLayout` below and
   // corrects any drift (footer note/queue rows appearing, Dynamic Type,
@@ -192,6 +199,35 @@ export function MobileChatScreen({
     isUnclaimed,
   });
   const runtimeContext = summarizeRuntimeContext(workspace, workspaceStatus);
+  // Row 11 ("cloud status screen") + Row 42 ("cloud start-block reasons") —
+  // null once the workspace is ready and unblocked, so the normal
+  // transcript/composer below renders unchanged in the common case.
+  const cloudWorkspaceStatusView = buildMobileCloudWorkspaceStatusView(workspace);
+  async function retryCloudWorkspaceProvisioning() {
+    setWorkspaceStatusRetryPending(true);
+    try {
+      // react-query's `refetch()` resolves with the result rather than
+      // throwing on failure (no `throwOnError` configured on this
+      // QueryClient — `MobileCloudProvider.tsx`), so the failure signal to
+      // check is `result.error`, not a catch clause.
+      const result = await workspaceQuery.refetch();
+      if (result.error) {
+        toast.show({
+          tone: "error",
+          message: result.error instanceof Error
+            ? result.error.message
+            : "Could not refresh the cloud workspace.",
+        });
+      }
+    } catch (error) {
+      toast.show({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Could not refresh the cloud workspace.",
+      });
+    } finally {
+      setWorkspaceStatusRetryPending(false);
+    }
+  }
   const {
     workspaceHarnessAvailability,
     canStartNewSession,
@@ -413,6 +449,14 @@ export function MobileChatScreen({
         <MobileChatClaimBanner
           claimPending={claimPending}
           onClaim={() => void claimChat()}
+        />
+      ) : null}
+
+      {cloudWorkspaceStatusView ? (
+        <MobileCloudWorkspaceStatusBanner
+          view={cloudWorkspaceStatusView}
+          retryPending={workspaceStatusRetryPending}
+          onRetry={() => void retryCloudWorkspaceProvisioning()}
         />
       ) : null}
 
