@@ -45,15 +45,25 @@ export function deriveOfflineSendDecision(isOnline: boolean): MobileOfflineSendD
 }
 
 /**
- * Mirrors the offline -> online edge check web's
- * `flushOfflineSessionReconnects` trigger implicitly relies on
- * (`use-connectivity-listeners.ts`'s `handleOnline`): only fire on the
- * transition, and only if there is actually something parked to flush.
+ * Whether a parked offline send should flush right now.
+ *
+ * Deliberately a state predicate, not an edge check: `isQueued` can only be
+ * set to `true` while offline (`deriveOfflineSendDecision` only returns
+ * `"queue"` when `!isOnline`), so `isOnline && hasQueuedPrompt` is BY
+ * CONSTRUCTION the reconnect moment — there is no reachable state where it's
+ * `true` and nothing changed. An earlier version keyed this off the
+ * `wasOnline -> isOnline` transition instead (mirroring web's
+ * `flushOfflineSessionReconnects` trigger), but that reintroduced a race: the
+ * "was online" tracking advanced on every render independent of when
+ * `isQueued` actually committed, so a reconnect that landed in the same
+ * render pass as (or just before) `setIsQueued(true)` could consume the edge
+ * and leave the send stranded, or fire a later unrelated edge with whatever
+ * draft happened to be in the composer at that point. The state predicate
+ * has no such window.
  */
 export function shouldFlushQueuedOfflinePrompt(input: {
-  wasOnline: boolean;
   isOnline: boolean;
   hasQueuedPrompt: boolean;
 }): boolean {
-  return !input.wasOnline && input.isOnline && input.hasQueuedPrompt;
+  return input.isOnline && input.hasQueuedPrompt;
 }

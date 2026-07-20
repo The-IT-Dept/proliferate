@@ -20,33 +20,19 @@ describe("deriveOfflineSendDecision", () => {
 });
 
 describe("shouldFlushQueuedOfflinePrompt", () => {
-  it("flushes exactly on the offline -> online edge when a prompt is queued", () => {
-    expect(
-      shouldFlushQueuedOfflinePrompt({ wasOnline: false, isOnline: true, hasQueuedPrompt: true }),
-    ).toBe(true);
+  it("does not flush while offline with something queued", () => {
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: false, hasQueuedPrompt: true })).toBe(false);
   });
 
-  it("does not flush if nothing is queued, even on the offline -> online edge", () => {
-    expect(
-      shouldFlushQueuedOfflinePrompt({ wasOnline: false, isOnline: true, hasQueuedPrompt: false }),
-    ).toBe(false);
+  it("flushes while online with something queued", () => {
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: true, hasQueuedPrompt: true })).toBe(true);
   });
 
-  it("does not flush while already online (no edge)", () => {
-    expect(
-      shouldFlushQueuedOfflinePrompt({ wasOnline: true, isOnline: true, hasQueuedPrompt: true }),
-    ).toBe(false);
+  it("does not flush while online with nothing queued", () => {
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: true, hasQueuedPrompt: false })).toBe(false);
   });
 
-  it("does not flush while still offline (no edge)", () => {
-    expect(
-      shouldFlushQueuedOfflinePrompt({ wasOnline: false, isOnline: false, hasQueuedPrompt: true }),
-    ).toBe(false);
-  });
-
-  it("does not flush on the online -> offline edge", () => {
-    expect(
-      shouldFlushQueuedOfflinePrompt({ wasOnline: true, isOnline: false, hasQueuedPrompt: true }),
-    ).toBe(false);
+  it("does not flush while offline with nothing queued", () => {
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: false, hasQueuedPrompt: false })).toBe(false);
   });
 });
