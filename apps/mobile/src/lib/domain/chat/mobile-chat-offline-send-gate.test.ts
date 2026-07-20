@@ -35,4 +35,16 @@ describe("shouldFlushQueuedOfflinePrompt", () => {
   it("does not flush while offline with nothing queued", () => {
     expect(shouldFlushQueuedOfflinePrompt({ isOnline: false, hasQueuedPrompt: false })).toBe(false);
   });
+
+  it("is a pure state predicate, not an edge check, across an offline -> online -> offline flap", () => {
+    // offline, queued: parked, no flush yet.
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: false, hasQueuedPrompt: true })).toBe(false);
+    // reconnect while still queued: flush.
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: true, hasQueuedPrompt: true })).toBe(true);
+    // the flush cleared the queue synchronously — evaluated again in the same
+    // online state, it must not re-fire.
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: true, hasQueuedPrompt: false })).toBe(false);
+    // dropping offline again with nothing queued stays quiet.
+    expect(shouldFlushQueuedOfflinePrompt({ isOnline: false, hasQueuedPrompt: false })).toBe(false);
+  });
 });
