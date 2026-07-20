@@ -54,6 +54,26 @@ export interface MobileOfflinePromptGate {
  * at the moment connectivity returns — including edits made while still
  * offline. Nothing is cleared while queued, so the user's draft stays
  * visible (and editable) in the composer the whole time it's parked.
+ *
+ * KNOWN LIMITATION (best-effort, by design): `isQueued` lives only in this
+ * hook's React state, mounted inside `MobileChatScreen` — it is not
+ * persisted. Unlike web's park (a module-level flag in
+ * `session-reconnect-state.ts`, global to the app), backing out of the chat
+ * screen — or killing the app — while a send is parked silently drops it;
+ * nothing resends it on return. Deliberately not fixed by reusing the
+ * pending-prompt durability (`savePendingMobilePrompt` /
+ * `use-mobile-pending-prompt-restore.ts`): that store and its restore/dispatch
+ * machinery are shaped specifically around starting a brand-new session from
+ * a queued first prompt (launch config, session-creation dispatch, retry
+ * semantics tied to that dispatch) and have no notion of "resend text to an
+ * already-selected session" — the existing-session send path this gate
+ * mostly guards (`submitExistingSessionPrompt`) is intentionally ephemeral/
+ * optimistic-only today, with no durable queue of its own. Bending that
+ * subsystem to cover this would mean building new dispatch semantics, i.e.
+ * exactly the disproportionate global reconnect-flush machinery this
+ * best-effort gate is meant to avoid. If losing a parked send on navigation
+ * proves to matter in practice, that's a deliberate follow-up, not an
+ * oversight here.
  */
 export function useMobileOfflinePromptGate({
   isOnline,
