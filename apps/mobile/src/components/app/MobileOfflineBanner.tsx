@@ -22,6 +22,15 @@ import { colors, spacing } from "../../styles/tokens";
  * content rather than floating over it. Pads for the top safe-area inset
  * itself since it renders above anything else that would normally own that
  * inset.
+ *
+ * `accessibilityLiveRegion="polite"` (not `"alert"`) matches web's
+ * `role="status"` intent (ARIA's polite live region) — this is a
+ * connectivity note, not an interruption, so it shouldn't cut off whatever
+ * the screen reader is already announcing. React Native's `accessibilityRole`
+ * enum has no `"status"`/ARIA-role equivalent to reach for directly; this
+ * follows the same `accessibilityLiveRegion="polite"` pattern already used
+ * for non-interrupting announcements elsewhere in this app (see the sign-in
+ * error text in `MobileAuthScreen.tsx`).
  */
 export function MobileOfflineBanner() {
   const connectivity = useMobileConnectivity();
@@ -33,7 +42,7 @@ export function MobileOfflineBanner() {
 
   return (
     <View
-      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
       accessibilityLabel={OFFLINE_BANNER_MESSAGE}
       style={[styles.banner, { paddingTop: insets.top + spacing[1] }]}
     >

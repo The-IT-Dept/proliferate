@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import * as Network from "expo-network";
 
 import {
@@ -36,19 +36,22 @@ const MobileConnectivityContext = createContext<MobileConnectivityState | null>(
  */
 export function MobileConnectivityProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<MobileConnectivityState>(initialMobileConnectivityState);
-  // Read inside the effect via a ref so the subscription callback always
-  // reduces off the latest state without needing `state` in the effect's
-  // dependency array (which would tear down and re-subscribe on every
-  // change).
-  const stateRef = useRef(state);
-  stateRef.current = state;
 
   useEffect(() => {
     let cancelled = false;
+    // Guards the async seed below against a TOCTOU with the live listener:
+    // `getNetworkStateAsync()` and `addNetworkStateListener` both start here,
+    // but the listener can deliver its first sample before the seed's
+    // promise resolves. Without this flag, that live sample would apply
+    // first and then the (by-then-stale) seed would land on top of it and
+    // clobber it. Once any live sample has applied, the seed is ignored —
+    // same lifetime/pattern as `cancelled` above (this effect has an empty
+    // dependency array, so both flags live exactly as long as one mount).
+    let hasLiveSample = false;
 
     void Network.getNetworkStateAsync()
       .then((sample) => {
-        if (cancelled) {
+        if (cancelled || hasLiveSample) {
           return;
         }
         setState((current) => nextMobileConnectivityState(current, sample));
@@ -60,6 +63,7 @@ export function MobileConnectivityProvider({ children }: { children: ReactNode }
       });
 
     const subscription = Network.addNetworkStateListener((sample) => {
+      hasLiveSample = true;
       setState((current) => nextMobileConnectivityState(current, sample));
     });
 
